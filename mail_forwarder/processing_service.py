@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Callable, List, Literal, Optional
 import struct
 import hashlib
+import locale
 import os
 import subprocess
 import sys
@@ -162,9 +163,31 @@ def run_rule_script(
     script_path = script_path.expanduser().resolve()
     attachment_path = attachment_path.expanduser().resolve()
     output_dir = output_dir.expanduser().resolve()
+    script_suffix = script_path.suffix.lower()
+
+    def decode_process_output(raw: bytes) -> str:
+        if not raw:
+            return ""
+        encodings = []
+        if script_suffix == ".py":
+            encodings.extend(["utf-8", "utf-8-sig"])
+        else:
+            preferred = locale.getpreferredencoding(False) or ""
+            encodings.extend([preferred, "gbk", "cp936", "utf-8", "utf-8-sig"])
+        seen = set()
+        for encoding in encodings:
+            if not encoding or encoding in seen:
+                continue
+            seen.add(encoding)
+            try:
+                return raw.decode(encoding)
+            except Exception:
+                continue
+        return raw.decode("utf-8", errors="replace")
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    emit_event(event_callback, "INFO", f"执行脚本: {script_path.name}")
+    runner_type = "Python 脚本" if script_suffix == ".py" else "EXE 程序" if script_suffix == ".exe" else "处理程序"
+    emit_event(event_callback, "INFO", f"执行{runner_type}: {script_path.name}")
     emit_event(event_callback, "INFO", f"脚本输入附件: {attachment_path.name}")
     emit_event(event_callback, "INFO", f"脚本输入附件路径: {attachment_path}")
     emit_event(event_callback, "INFO", f"脚本输出目录: {output_dir}")
@@ -183,33 +206,39 @@ def run_rule_script(
     env["LZ_ATTACHMENT_PATH"] = str(attachment_path)
     env["LZ_OUTPUT_DIR"] = str(output_dir)
 
-    command = [
-        sys.executable,
-        str(script_path),
-        str(attachment_path),
-        str(output_dir),
-    ]
+    if script_suffix == ".py":
+        command = [
+            sys.executable,
+            str(script_path),
+            str(attachment_path),
+            str(output_dir),
+        ]
+    elif script_suffix == ".exe":
+        command = [
+            str(script_path),
+            str(attachment_path),
+            str(output_dir),
+        ]
+    else:
+        raise RuntimeError(f"不支持的处理程序类型: {script_path.suffix}，仅支持 .py 或 .exe")
     completed = subprocess.run(
         command,
         capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
         timeout=300,
         cwd=str(script_path.parent),
         env=env,
     )
-    stdout_text = (completed.stdout or "").strip()
-    stderr_text = (completed.stderr or "").strip()
+    stdout_text = decode_process_output(completed.stdout or b"").strip()
+    stderr_text = decode_process_output(completed.stderr or b"").strip()
     if stdout_text:
         emit_event(event_callback, "INFO", f"脚本输出: {stdout_text}")
     if completed.returncode != 0:
         if stderr_text:
             emit_event(event_callback, "ERROR", f"脚本错误: {stderr_text}")
-        raise RuntimeError(f"脚本执行失败，退出码={completed.returncode}")
+        raise RuntimeError(f"处理程序执行失败，退出码={completed.returncode}")
     if stderr_text:
         emit_event(event_callback, "WARNING", f"脚本标准错误输出: {stderr_text}")
-    emit_event(event_callback, "SUCCESS", f"脚本处理完成: {attachment_path.name}")
+    emit_event(event_callback, "SUCCESS", f"处理程序执行完成: {attachment_path.name}")
 
 
 class MailProcessingService:
@@ -360,7 +389,9 @@ class MailProcessingService:
             types_text = ", ".join(allowed_types)
             names_text = ", ".join(filename_keywords) if filename_keywords else "(未启用)"
             if script_path_text:
-                emit_event(event_callback, "INFO", f"处理模式: Python 脚本 -> {script_path_text}")
+                script_suffix = Path(script_path_text).suffix.lower()
+                mode_text = "Python 脚本" if script_suffix == ".py" else "EXE 程序" if script_suffix == ".exe" else "处理程序"
+                emit_event(event_callback, "INFO", f"处理模式: {mode_text} -> {script_path_text}")
                 if script_output_dir_text:
                     emit_event(event_callback, "INFO", f"脚本输出目录: {script_output_dir_text}")
             if webhook_alias:
@@ -390,6 +421,8 @@ class MailProcessingService:
                     script_path = Path(script_path_text).expanduser()
                     if not script_path.exists() or not script_path.is_file():
                         raise RuntimeError(f"脚本文件不存在: {script_path}")
+                    if script_path.suffix.lower() not in {".py", ".exe"}:
+                        raise RuntimeError(f"仅支持 .py 或 .exe 处理程序: {script_path.name}")
                     if not script_output_dir_text.strip():
                         raise RuntimeError("脚本输出目录不能为空")
                     output_dir = Path(script_output_dir_text).expanduser()
@@ -426,6 +459,56 @@ class MailProcessingService:
                 sender=sender,
                 date=date,
                 files=files,
+            )
+
+    def process_single_rule(
+        self,
+        rule: dict,
+        *,
+        force: bool = False,
+        update_state: bool = True,
+        event_callback: EventCallback = None,
+    ) -> RuleProcessingResult:
+        mailbox_alias_map = self._load_mailboxes()
+        if not mailbox_alias_map:
+            return RuleProcessingResult(status="skipped", reason="未配置可用的 IMAP 邮箱别名")
+
+        mailbox_alias = str(rule.get("mailbox_alias", "")).strip()
+        if not mailbox_alias and len(mailbox_alias_map) == 1:
+            mailbox_alias = next(iter(mailbox_alias_map.keys()), "")
+
+        keyword = str(rule.get("keyword", "")).strip()
+        if not mailbox_alias:
+            return RuleProcessingResult(
+                status="skipped",
+                rule_keyword=keyword,
+                reason=f"规则“{keyword}”未选择邮箱别名",
+            )
+
+        mailbox_config = mailbox_alias_map.get(mailbox_alias)
+        if not mailbox_config:
+            return RuleProcessingResult(
+                status="skipped",
+                rule_keyword=keyword,
+                mailbox_alias=mailbox_alias,
+                reason=f"规则“{keyword}”邮箱别名无效: {mailbox_alias}",
+            )
+
+        try:
+            return self._process_rule(
+                rule,
+                mailbox_config,
+                force=force,
+                update_state=update_state,
+                event_callback=event_callback,
+            )
+        except Exception as exc:
+            return RuleProcessingResult(
+                status="error",
+                rule_keyword=keyword,
+                mailbox_alias=mailbox_alias,
+                mailbox_folder=str(mailbox_config.get("mailbox", "INBOX")).strip() or "INBOX",
+                reason=str(exc),
             )
 
     def process_rule_batch(

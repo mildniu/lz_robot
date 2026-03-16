@@ -39,9 +39,14 @@ class SettingsPage(ctk.CTkScrollableFrame):
         "设置": "settings",
         "关于": "about",
     }
+    TRIGGER_LABEL_TO_VALUE = {
+        "周期检测": "periodic",
+        "定时检测": "timed",
+    }
 
-    def __init__(self, master, config: Optional[AppConfig] = None, **kwargs):
+    def __init__(self, master, config: Optional[AppConfig] = None, on_config_changed=None, **kwargs):
         super().__init__(master, **kwargs)
+        self.on_config_changed = on_config_changed
         self.config = config or self.load_current_config()
         self.alias_slot_count = 6
         self.mailbox_slot_count = 6
@@ -66,6 +71,14 @@ class SettingsPage(ctk.CTkScrollableFrame):
         self.mailbox_config = self.load_mailbox_config()
         self.subject_rules_payload = load_subject_attachment_rules()
         self.setup_ui()
+
+    def _notify_config_changed(self):
+        self.config = self.load_current_config()
+        self.alias_config = self.load_alias_config()
+        self.mailbox_config = self.load_mailbox_config()
+        self.subject_rules_payload = load_subject_attachment_rules()
+        if callable(self.on_config_changed):
+            self.on_config_changed()
 
     def load_current_config(self) -> Optional[AppConfig]:
         try:
@@ -274,13 +287,31 @@ class SettingsPage(ctk.CTkScrollableFrame):
         mailbox_alias: str,
         robot_alias: str,
         script_path: str,
+        trigger_mode: str = "periodic",
+        schedule_time: str = "",
+        poll_interval_seconds: int = 0,
     ) -> str:
         status_text = "已启用" if enabled else "未启用"
         keyword_text = keyword or "未填写主题"
         mailbox_text = mailbox_alias if mailbox_alias and mailbox_alias != self.NO_MAILBOX_LABEL else "未选邮箱"
         robot_text = robot_alias if robot_alias and robot_alias != self.NO_ALIAS_LABEL else "未选机器人"
         mode_text = "脚本处理" if script_path.strip() else "直接推送"
-        return f"{status_text} | {keyword_text} | {mailbox_text} -> {robot_text} | {mode_text}"
+        trigger_text = (
+            f"定时 {schedule_time or '--:--'}"
+            if trigger_mode == "timed"
+            else f"周期 {self.format_rule_interval_text(poll_interval_seconds)}"
+        )
+        return f"{status_text} | {keyword_text} | {mailbox_text} -> {robot_text} | {trigger_text} | {mode_text}"
+
+    @staticmethod
+    def format_rule_interval_text(seconds: int) -> str:
+        try:
+            value = int(seconds)
+        except (TypeError, ValueError):
+            value = 60
+        if value % 60 == 0:
+            return f"{max(1, value // 60)} 分钟"
+        return f"{value} 秒"
 
     def toggle_rule_card(self, index: int):
         detail_frame = self.rule_detail_frames.get(index)
@@ -630,12 +661,7 @@ class SettingsPage(ctk.CTkScrollableFrame):
         rules = self.subject_rules_payload.get("rules", [])
         option_values = self.get_alias_option_values()
         mailbox_option_values = self.get_mailbox_option_values()
-        initially_expanded_index = 1
-        for index in range(1, self.subject_rule_slot_count + 1):
-            rule_data = rules[index - 1] if index <= len(rules) else {}
-            if rule_data:
-                initially_expanded_index = index
-                break
+        initially_expanded_index = 0
         for index in range(1, self.subject_rule_slot_count + 1):
             rule_data = rules[index - 1] if index <= len(rules) else {}
             enabled = bool(rule_data.get("enabled", False)) if rule_data else False
@@ -644,9 +670,12 @@ class SettingsPage(ctk.CTkScrollableFrame):
             name_keywords = (rule_data.get("filename_keywords", [""]) or [""])[0]
             script_path = rule_data.get("script_path", "")
             script_output_dir = rule_data.get("script_output_dir", "")
+            trigger_mode = str(rule_data.get("trigger_mode", "periodic")).strip() or "periodic"
+            schedule_time = str(rule_data.get("schedule_time", "")).strip()
+            poll_interval_seconds = rule_data.get("poll_interval_seconds") or self.config.poll_interval_seconds
             row_interval = str(
                 self.interval_seconds_to_minutes(
-                    rule_data.get("poll_interval_seconds") or self.config.poll_interval_seconds
+                    poll_interval_seconds
                 )
             )
             row_max_size = str(rule_data.get("max_attachment_size_mb") or self.config.max_attachment_size_mb)
@@ -689,6 +718,9 @@ class SettingsPage(ctk.CTkScrollableFrame):
                     mailbox_alias=selected_mailbox_alias,
                     robot_alias=selected_alias,
                     script_path=script_path,
+                    trigger_mode=trigger_mode,
+                    schedule_time=schedule_time,
+                    poll_interval_seconds=poll_interval_seconds,
                 ),
                 font=ctk.CTkFont(size=11),
                 text_color=("gray35", "gray70"),
@@ -702,6 +734,9 @@ class SettingsPage(ctk.CTkScrollableFrame):
                 width=68,
                 height=28,
                 font=ctk.CTkFont(size=11),
+                fg_color="#FB8C00",
+                hover_color="#EF6C00",
+                text_color="white",
                 command=lambda target=index: self.toggle_rule_card(target),
             )
             toggle_btn.pack(side="right")
@@ -831,10 +866,10 @@ class SettingsPage(ctk.CTkScrollableFrame):
 
             script_path_col = ctk.CTkFrame(script_row, fg_color="transparent")
             script_path_col.pack(side="left", fill="x", expand=True, padx=(0, 8))
-            ctk.CTkLabel(script_path_col, text="Python 脚本", anchor="w", font=ctk.CTkFont(size=12)).pack(anchor="w")
+            ctk.CTkLabel(script_path_col, text="处理程序", anchor="w", font=ctk.CTkFont(size=12)).pack(anchor="w")
             script_entry = ctk.CTkEntry(
                 script_path_col,
-                placeholder_text="可选：选择 Python 脚本，脚本会接管处理并使用本规则选中的机器人推送",
+                placeholder_text="可选：选择 .py 或 .exe，处理程序会接管附件处理与推送",
                 height=30,
                 font=ctk.CTkFont(size=12),
             )
@@ -846,7 +881,7 @@ class SettingsPage(ctk.CTkScrollableFrame):
             script_path_actions.pack(side="left", padx=(0, 8), pady=(22, 0))
             script_browse_btn = ctk.CTkButton(
                 script_path_actions,
-                text="选择脚本",
+                text="选择程序",
                 width=78,
                 height=30,
                 font=ctk.CTkFont(size=11),
@@ -891,6 +926,22 @@ class SettingsPage(ctk.CTkScrollableFrame):
             runtime_row = ctk.CTkFrame(runtime_block, fg_color="transparent")
             runtime_row.pack(fill="x")
 
+            trigger_col = ctk.CTkFrame(runtime_row, fg_color="transparent")
+            trigger_col.pack(side="left", padx=(0, 12))
+            ctk.CTkLabel(trigger_col, text="检测方式", anchor="w", font=ctk.CTkFont(size=12)).pack(anchor="w")
+            trigger_label = self._label_for_value(self.TRIGGER_LABEL_TO_VALUE, trigger_mode, "周期检测")
+            trigger_var = tk.StringVar(value=trigger_label)
+            trigger_menu = ctk.CTkOptionMenu(
+                trigger_col,
+                values=list(self.TRIGGER_LABEL_TO_VALUE.keys()),
+                variable=trigger_var,
+                height=32,
+                width=120,
+                font=ctk.CTkFont(size=12),
+            )
+            trigger_menu.pack(pady=(4, 0))
+            self.ui_vars[f"rule_{index}_trigger_mode"] = trigger_var
+
             interval_col = ctk.CTkFrame(runtime_row, fg_color="transparent")
             interval_col.pack(side="left", padx=(0, 12))
             ctk.CTkLabel(interval_col, text="轮询间隔(min)", anchor="w", font=ctk.CTkFont(size=12)).pack(anchor="w")
@@ -904,6 +955,20 @@ class SettingsPage(ctk.CTkScrollableFrame):
             interval_entry.insert(0, row_interval)
             interval_entry.pack(pady=(4, 0))
             self.entries[f"rule_{index}_interval"] = interval_entry
+
+            schedule_col = ctk.CTkFrame(runtime_row, fg_color="transparent")
+            schedule_col.pack(side="left", padx=(0, 12))
+            ctk.CTkLabel(schedule_col, text="定时时刻(HH:MM)", anchor="w", font=ctk.CTkFont(size=12)).pack(anchor="w")
+            schedule_entry = ctk.CTkEntry(
+                schedule_col,
+                placeholder_text="例: 08:30",
+                height=32,
+                width=120,
+                font=ctk.CTkFont(size=12),
+            )
+            schedule_entry.insert(0, schedule_time)
+            schedule_entry.pack(pady=(4, 0))
+            self.entries[f"rule_{index}_schedule_time"] = schedule_entry
 
             max_size_col = ctk.CTkFrame(runtime_row, fg_color="transparent")
             max_size_col.pack(side="left")
@@ -980,11 +1045,16 @@ class SettingsPage(ctk.CTkScrollableFrame):
 
         refresh_btn = ctk.CTkButton(
             card,
-            text="刷新别名下拉",
+            text="重新读取下拉",
             command=self.refresh_alias_options,
             width=120,
-            height=30,
-            font=ctk.CTkFont(size=12),
+            height=28,
+            font=ctk.CTkFont(size=11),
+            fg_color=("gray88", "gray24"),
+            hover_color=("gray80", "gray30"),
+            text_color=("gray25", "gray85"),
+            border_width=1,
+            border_color=("gray78", "gray38"),
         )
         refresh_btn.pack(anchor="w", padx=15, pady=(0, 12))
 
@@ -1181,24 +1251,24 @@ class SettingsPage(ctk.CTkScrollableFrame):
         body = ctk.CTkFrame(monitor_card, fg_color="transparent")
         body.pack(fill="x", padx=14, pady=(0, 12))
 
-        path_row = ctk.CTkFrame(body, fg_color="transparent")
-        path_row.pack(fill="x", pady=(0, 8))
+        config_row = ctk.CTkFrame(body, fg_color="transparent")
+        config_row.pack(fill="x")
 
-        path_label = ctk.CTkLabel(path_row, text="监测路径", width=80, anchor="w", font=ctk.CTkFont(size=12))
+        path_label = ctk.CTkLabel(config_row, text="监测路径", width=64, anchor="w", font=ctk.CTkFont(size=12))
         path_label.pack(side="left")
 
         path_entry = ctk.CTkEntry(
-            path_row,
+            config_row,
             placeholder_text=config.get("path", ""),
             height=32,
             font=ctk.CTkFont(size=12),
         )
         path_entry.insert(0, config.get("path", ""))
-        path_entry.pack(side="left", fill="x", expand=True, padx=5)
+        path_entry.pack(side="left", fill="x", expand=True, padx=(4, 6))
         self.entries[f"folder_{index}_path"] = path_entry
 
         browse_btn = ctk.CTkButton(
-            path_row,
+            config_row,
             text="浏览",
             width=60,
             height=32,
@@ -1207,12 +1277,9 @@ class SettingsPage(ctk.CTkScrollableFrame):
             fg_color=("gray70", "gray30"),
             hover_color=("gray50", "gray40"),
         )
-        browse_btn.pack(side="left", padx=5)
+        browse_btn.pack(side="left", padx=(0, 8))
 
-        alias_row = ctk.CTkFrame(body, fg_color="transparent")
-        alias_row.pack(fill="x")
-
-        alias_label = ctk.CTkLabel(alias_row, text="推送机器人", width=80, anchor="w", font=ctk.CTkFont(size=12))
+        alias_label = ctk.CTkLabel(config_row, text="推送机器人", width=70, anchor="w", font=ctk.CTkFont(size=12))
         alias_label.pack(side="left")
 
         option_values = self.get_alias_option_values()
@@ -1224,13 +1291,14 @@ class SettingsPage(ctk.CTkScrollableFrame):
 
         alias_var = tk.StringVar(value=selected_alias)
         alias_menu = ctk.CTkOptionMenu(
-            alias_row,
+            config_row,
             values=option_values,
             variable=alias_var,
+            width=170,
             height=32,
             font=ctk.CTkFont(size=12),
         )
-        alias_menu.pack(side="left", fill="x", expand=True, padx=5)
+        alias_menu.pack(side="left", padx=(4, 0))
 
         folder_alias_key = f"folder_{index}_alias"
         self.folder_alias_vars[folder_alias_key] = alias_var
@@ -1260,8 +1328,8 @@ class SettingsPage(ctk.CTkScrollableFrame):
         root.withdraw()
         root.wm_attributes("-topmost", 1)
         file_path = filedialog.askopenfilename(
-            title="选择 Python 脚本",
-            filetypes=[("Python 脚本", "*.py"), ("所有文件", "*.*")],
+            title="选择处理程序",
+            filetypes=[("处理程序", "*.py;*.exe"), ("Python 脚本", "*.py"), ("EXE 程序", "*.exe"), ("所有文件", "*.*")],
         )
         root.destroy()
         if file_path:
@@ -1320,6 +1388,7 @@ class SettingsPage(ctk.CTkScrollableFrame):
             self.mailbox_config = {"mailboxes": mailboxes}
             self.refresh_mailbox_options()
             self._sync_legacy_app_config_with_mailbox(mailboxes[0])
+            self._notify_config_changed()
             messagebox.showinfo("保存成功", "邮箱配置已保存")
         except Exception as exc:
             messagebox.showerror("错误", f"保存邮箱配置失败:\n{exc}")
@@ -1340,6 +1409,7 @@ class SettingsPage(ctk.CTkScrollableFrame):
             save_webhook_aliases(aliases, email_alias)
             self.alias_config = {"aliases": aliases, "email_alias": email_alias}
             self.refresh_alias_options()
+            self._notify_config_changed()
             messagebox.showinfo("保存成功", "机器人别名配置已保存")
         except Exception as exc:
             messagebox.showerror("错误", f"保存别名配置失败:\n{exc}")
@@ -1367,21 +1437,26 @@ class SettingsPage(ctk.CTkScrollableFrame):
                 types_entry = self.entries.get(f"rule_{index}_types")
                 names_entry = self.entries.get(f"rule_{index}_name_keywords")
                 interval_entry = self.entries.get(f"rule_{index}_interval")
+                schedule_entry = self.entries.get(f"rule_{index}_schedule_time")
                 max_size_entry = self.entries.get(f"rule_{index}_max_size")
                 script_entry = self.entries.get(f"rule_{index}_script_path")
                 output_dir_entry = self.entries.get(f"rule_{index}_script_output_dir")
                 enabled_checkbox = self.rule_checkboxes.get(f"rule_{index}_enabled")
                 alias_var = self.rule_alias_vars.get(f"rule_{index}_alias")
                 mailbox_alias_var = self.rule_mailbox_vars.get(f"rule_{index}_mailbox_alias")
+                trigger_mode_var = self.ui_vars.get(f"rule_{index}_trigger_mode")
 
                 enabled = enabled_checkbox.get() if enabled_checkbox else False
                 keyword = keyword_entry.get().strip() if keyword_entry else ""
                 raw_types = types_entry.get().strip() if types_entry else ""
                 raw_name_keywords = names_entry.get().strip() if names_entry else ""
                 raw_interval = interval_entry.get().strip() if interval_entry else ""
+                raw_schedule_time = schedule_entry.get().strip() if schedule_entry else ""
                 raw_max_size = max_size_entry.get().strip() if max_size_entry else ""
                 script_path = script_entry.get().strip() if script_entry else ""
                 script_output_dir = output_dir_entry.get().strip() if output_dir_entry else ""
+                trigger_mode_label = trigger_mode_var.get().strip() if trigger_mode_var else "周期检测"
+                trigger_mode = self._value_for_label(self.TRIGGER_LABEL_TO_VALUE, trigger_mode_label, "periodic")
                 parsed_name_keywords = parse_filename_keywords_input(raw_name_keywords)
                 selected_mailbox_alias = mailbox_alias_var.get().strip() if mailbox_alias_var else ""
                 if selected_mailbox_alias == self.NO_MAILBOX_LABEL:
@@ -1402,6 +1477,7 @@ class SettingsPage(ctk.CTkScrollableFrame):
                     and not raw_types
                     and not raw_name_keywords
                     and not raw_interval
+                    and not raw_schedule_time
                     and not raw_max_size
                     and not script_path
                     and not script_output_dir
@@ -1428,14 +1504,37 @@ class SettingsPage(ctk.CTkScrollableFrame):
                     subject_rule_errors.append(f"规则{index}: 附件文件名关键字只允许填写一个值")
                     continue
                 try:
-                    parsed_interval_minutes = int(raw_interval)
                     parsed_max_size = int(raw_max_size)
-                    if parsed_interval_minutes <= 0 or parsed_max_size <= 0:
+                    if parsed_max_size <= 0:
                         raise ValueError
                 except ValueError:
-                    subject_rule_errors.append(f"规则{index}: 轮询间隔(min)和最大附件(MB)必须是大于0的整数")
+                    subject_rule_errors.append(f"规则{index}: 最大附件(MB)必须是大于0的整数")
                     continue
-                parsed_interval_seconds = self.interval_minutes_to_seconds(parsed_interval_minutes)
+
+                if trigger_mode == "timed":
+                    parsed_schedule_time = raw_schedule_time
+                    try:
+                        hour_text, minute_text = parsed_schedule_time.split(":", 1)
+                        hour = int(hour_text)
+                        minute = int(minute_text)
+                        if not (0 <= hour <= 23 and 0 <= minute <= 59):
+                            raise ValueError
+                    except Exception:
+                        subject_rule_errors.append(f"规则{index}: 定时检测请输入有效时间，格式如 08:30")
+                        continue
+                    parsed_interval_seconds = self.interval_minutes_to_seconds(
+                        int(raw_interval) if raw_interval.isdigit() and int(raw_interval) > 0 else 1
+                    )
+                else:
+                    try:
+                        parsed_interval_minutes = int(raw_interval)
+                        if parsed_interval_minutes <= 0:
+                            raise ValueError
+                    except ValueError:
+                        subject_rule_errors.append(f"规则{index}: 周期检测时，轮询间隔(min)必须是大于0的整数")
+                        continue
+                    parsed_interval_seconds = self.interval_minutes_to_seconds(parsed_interval_minutes)
+                    parsed_schedule_time = ""
 
                 if enabled and not selected_mailbox_alias:
                     subject_rule_errors.append(f"规则{index}: 已启用但未选择所属邮箱")
@@ -1448,8 +1547,8 @@ class SettingsPage(ctk.CTkScrollableFrame):
                     if not Path(script_path).exists():
                         subject_rule_errors.append(f"规则{index}: 脚本文件不存在 - {script_path}")
                         continue
-                    if Path(script_path).suffix.lower() != ".py":
-                        subject_rule_errors.append(f"规则{index}: 仅支持选择 .py 脚本")
+                    if Path(script_path).suffix.lower() not in {".py", ".exe"}:
+                        subject_rule_errors.append(f"规则{index}: 仅支持选择 .py 或 .exe 处理程序")
                         continue
                     if not script_output_dir:
                         subject_rule_errors.append(f"规则{index}: 选择脚本后必须填写输出目录")
@@ -1469,6 +1568,8 @@ class SettingsPage(ctk.CTkScrollableFrame):
                         "webhook_url": webhook_url,
                         "script_path": script_path,
                         "script_output_dir": script_output_dir,
+                        "trigger_mode": trigger_mode,
+                        "schedule_time": parsed_schedule_time,
                         "poll_interval_seconds": parsed_interval_seconds,
                         "max_attachment_size_mb": parsed_max_size,
                     }
@@ -1507,6 +1608,7 @@ class SettingsPage(ctk.CTkScrollableFrame):
                     "MAX_ATTACHMENT_SIZE_MB": saved_max,
                 },
             )
+            self._notify_config_changed()
             success_msg = f"邮箱检测规则已保存\n\n共 {len(subject_rules)} 条，启用 {enabled_count} 条"
             if subject_rule_errors:
                 success_msg += "\n\n以下规则未保存：\n" + "\n".join(f"• {error}" for error in subject_rule_errors)
@@ -1570,6 +1672,7 @@ class SettingsPage(ctk.CTkScrollableFrame):
             temp_file.replace(monitor_config_file)
 
             enabled_count = sum(1 for cfg in folder_monitor_config.values() if cfg.get("enabled", False))
+            self._notify_config_changed()
             success_message = f"✅ 文件夹检测配置已保存\n\n已启用 {enabled_count} 个文件夹检测"
             if folder_config_warnings:
                 success_message += "\n\n⚠️ 警告：\n" + "\n".join(f"• {warning}" for warning in folder_config_warnings)
@@ -1600,6 +1703,7 @@ class SettingsPage(ctk.CTkScrollableFrame):
                 return
 
             upsert_env_file(Path("settings/app_config.json"), config_values)
+            self._notify_config_changed()
             messagebox.showinfo("保存成功", "路径配置已保存")
         except Exception as exc:
             messagebox.showerror("错误", f"保存路径配置失败:\n{exc}")
@@ -1655,6 +1759,7 @@ class SettingsPage(ctk.CTkScrollableFrame):
                     "UI_SCALE": str(ui_scale),
                 },
             )
+            self._notify_config_changed()
             messagebox.showinfo("保存成功", "界面设置已保存（重启程序后全部生效）")
         except Exception as exc:
             messagebox.showerror("错误", f"保存界面设置失败:\n{exc}")

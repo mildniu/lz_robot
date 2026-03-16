@@ -1,5 +1,6 @@
 import threading
 import tkinter as tk
+import tkinter.messagebox as messagebox
 from datetime import datetime
 from pathlib import Path
 from tkinter import filedialog
@@ -58,11 +59,16 @@ class BotTestPage(ctk.CTkFrame):
 
         refresh_btn = ctk.CTkButton(
             alias_row,
-            text="刷新别名",
+            text="重新读取",
             command=self.refresh_aliases,
-            width=90,
-            height=34,
-            font=ctk.CTkFont(size=12),
+            width=82,
+            height=30,
+            font=ctk.CTkFont(size=11),
+            fg_color=("gray88", "gray24"),
+            hover_color=("gray80", "gray30"),
+            text_color=("gray25", "gray85"),
+            border_width=1,
+            border_color=("gray78", "gray38"),
         )
         refresh_btn.pack(side="left", padx=8)
 
@@ -138,6 +144,14 @@ class BotTestPage(ctk.CTkFrame):
             height=30,
             font=ctk.CTkFont(size=12),
         ).pack(side="right", padx=10, pady=5)
+        ctk.CTkButton(
+            log_header,
+            text="导出",
+            command=self.export_log,
+            width=70,
+            height=30,
+            font=ctk.CTkFont(size=12),
+        ).pack(side="right", padx=(0, 8), pady=5)
 
         self.log_text = ctk.CTkTextbox(log_card, font=ctk.CTkFont(family="Consolas", size=12))
         self.log_text.pack(fill="both", expand=True, padx=10, pady=(0, 10))
@@ -151,7 +165,26 @@ class BotTestPage(ctk.CTkFrame):
     def clear_log(self):
         self.log_text.delete("1.0", "end")
 
-    def refresh_aliases(self):
+    def export_log(self):
+        content = self.log_text.get("1.0", "end").strip()
+        if not content:
+            messagebox.showwarning("提示", "当前日志为空，暂无可导出的内容")
+            return
+        export_dir = Path("exports")
+        export_dir.mkdir(parents=True, exist_ok=True)
+        file_path = filedialog.asksaveasfilename(
+            title="导出机器人测试日志",
+            initialdir=str(export_dir.resolve()),
+            initialfile=f"bot_test_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log",
+            defaultextension=".log",
+            filetypes=[("Log Files", "*.log"), ("Text Files", "*.txt"), ("All Files", "*.*")],
+        )
+        if not file_path:
+            return
+        Path(file_path).write_text(content + "\n", encoding="utf-8")
+        messagebox.showinfo("导出成功", f"日志已导出到:\n{file_path}")
+
+    def refresh_aliases(self, log_result: bool = True):
         config = load_webhook_aliases()
         aliases = config.get("aliases", {})
         self.alias_map = {k: v.strip() for k, v in aliases.items() if str(k).strip() and str(v).strip()}
@@ -161,7 +194,14 @@ class BotTestPage(ctk.CTkFrame):
         self.alias_menu.configure(values=values)
         if current not in values:
             self.alias_var.set(values[1] if len(values) > 1 else values[0])
-        self.append_log("INFO", f"已加载机器人别名数量: {len(self.alias_map)}")
+        if log_result:
+            self.append_log("INFO", f"已加载机器人别名数量: {len(self.alias_map)}")
+
+    def on_page_activated(self):
+        self.refresh_aliases(log_result=False)
+
+    def on_external_config_updated(self):
+        self.refresh_aliases(log_result=True)
 
     def choose_file(self):
         root = tk.Tk()

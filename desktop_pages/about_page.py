@@ -67,9 +67,9 @@ class AboutPage(ctk.CTkFrame):
             summary = "\n".join(
                 [
                     "【工具简介】",
-                    "量子推送机器人 v4.0",
+                    "量子推送机器人 v5.0",
                     "支持邮件检测与文件夹检测两种模式，可长期运行。",
-                    "邮件规则支持按所属邮箱、附件格式、机器人、Python 脚本进行细分处理。",
+                    "邮件规则支持按所属邮箱、附件格式、机器人、处理程序(.py/.exe)进行细分处理。",
                     "可直接推送原附件，也可先由脚本处理后推送文字、图片、文件。",
                     "",
                     "【使用说明】",
@@ -84,7 +84,7 @@ class AboutPage(ctk.CTkFrame):
             summary = "\n".join(
                 [
                     "【工具简介】",
-                    "量子推送机器人 v4.0",
+                    "量子推送机器人 v5.0",
                     "支持邮件检测与文件夹检测两种模式，可长期运行。",
                     "支持脚本处理、机器人推送和文件留存。",
                     "",
@@ -116,3 +116,9 @@ class AboutPage(ctk.CTkFrame):
 
         self.summary_value.configure(text=summary)
         self.status_value.configure(text=status)
+
+    def on_page_activated(self):
+        self.refresh_info()
+
+    def on_external_config_updated(self):
+        self.refresh_info()

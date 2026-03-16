@@ -21,21 +21,21 @@ class LogHandler:
     def add_callback(self, callback):
         self.callbacks.append(callback)
 
-    def log(self, level: str, message: str):
+    def log(self, level: str, message: str, source: str = "global"):
         timestamp = datetime.now().strftime("%H:%M:%S")
-        self.queue.put({"time": timestamp, "level": level, "message": message})
+        self.queue.put({"time": timestamp, "level": level, "message": message, "source": source})
 
-    def info(self, message: str):
-        self.log("INFO", message)
+    def info(self, message: str, source: str = "global"):
+        self.log("INFO", message, source=source)
 
-    def success(self, message: str):
-        self.log("SUCCESS", message)
+    def success(self, message: str, source: str = "global"):
+        self.log("SUCCESS", message, source=source)
 
-    def warning(self, message: str):
-        self.log("WARNING", message)
+    def warning(self, message: str, source: str = "global"):
+        self.log("WARNING", message, source=source)
 
-    def error(self, message: str):
-        self.log("ERROR", message)
+    def error(self, message: str, source: str = "global"):
+        self.log("ERROR", message, source=source)
 
     def dispatch_pending(self):
         while True:
@@ -112,14 +112,15 @@ class FileSentTracker:
 
 
 class FolderMonitorHandler(FileSystemEventHandler):
-    def __init__(self, callback, log_handler: LogHandler):
+    def __init__(self, callback, log_handler: LogHandler, source: str = "global"):
         super().__init__()
         self.callback = callback
         self.log_handler = log_handler
+        self.source = source
 
     def on_created(self, event):
         if not event.is_directory:
-            self.log_handler.info(f"检测到新文件: {event.src_path}")
+            self.log_handler.info(f"检测到新文件: {event.src_path}", source=self.source)
             if self.callback:
                 self.callback(event.src_path, "created")
 

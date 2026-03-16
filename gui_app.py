@@ -16,8 +16,9 @@ except Exception:  # pragma: no cover - runtime fallback for missing pillow
 from desktop_pages import AboutPage, BotTestPage, ExecutePage, FolderMonitorPage, LogHandler, SettingsPage
 from mail_forwarder.config import load_config, upsert_env_file
 
-APP_TITLE = "量子推送机器人 v4.0"
-APP_FOOTER_TEXT = "v4.0\nby 不丢西瓜der"
+APP_TITLE = "量子推送机器人 v5.0"
+APP_FOOTER_TEXT = "v5.0\nby 不丢西瓜der"
+WINDOWS_APP_ID = "QuantumTelecom.LZRobot.5.0"
 
 
 def runtime_base_dir() -> Path:
@@ -38,6 +39,17 @@ def ensure_stable_working_directory() -> Path:
 def resource_path(relative_path: str) -> Path:
     base_dir = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
     return base_dir / relative_path
+
+
+def apply_windows_app_id() -> None:
+    if not sys.platform.startswith("win"):
+        return
+    try:
+        import ctypes
+
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(WINDOWS_APP_ID)
+    except Exception:
+        pass
 
 
 class ModernApp(ctk.CTk):
@@ -109,7 +121,7 @@ class ModernApp(ctk.CTk):
         return None
 
     def _apply_window_icon(self):
-        ico_path = resource_path("icon/1.ico")
+        ico_path = resource_path("icon/ico_quantum_telecom.ico")
         png_path = resource_path("icon/logo_quantum_telecom.png")
 
         if sys.platform.startswith("win") and ico_path.exists():
@@ -233,14 +245,21 @@ class ModernApp(ctk.CTk):
             auto_scroll_log=self.config.auto_scroll_log,
         )
         self.pages["bot_test"] = BotTestPage(self.content_area)
-        self.pages["settings"] = SettingsPage(self.content_area)
+        self.pages["settings"] = SettingsPage(
+            self.content_area,
+            on_config_changed=self.notify_config_changed,
+        )
         self.pages["about"] = AboutPage(self.content_area)
 
     def show_page(self, page_id: str):
         for page in self.pages.values():
             page.pack_forget()
 
-        self.pages[page_id].pack(fill="both", expand=True)
+        current_page = self.pages[page_id]
+        current_page.pack(fill="both", expand=True)
+        page_activated = getattr(current_page, "on_page_activated", None)
+        if callable(page_activated):
+            page_activated()
 
         for pid in ["execute", "folder", "bot_test", "settings", "about"]:
             button = getattr(self, f"{pid}_btn", None)
@@ -256,6 +275,13 @@ class ModernApp(ctk.CTk):
                     fg_color="transparent",
                     text_color=("gray10", "#DCE4EE"),
                 )
+
+    def notify_config_changed(self):
+        self.config = load_config()
+        for page in self.pages.values():
+            refresh_func = getattr(page, "on_external_config_updated", None)
+            if callable(refresh_func):
+                refresh_func()
 
     def process_logs(self):
         self.email_log_handler.dispatch_pending()
@@ -284,6 +310,7 @@ def main():
         print("请运行: pip install customtkinter")
         return
 
+    apply_windows_app_id()
     app = ModernApp()
     app.mainloop()
 

@@ -23,6 +23,25 @@ def parse_filename_keywords_input(raw_value: str) -> list[str]:
     return [first_item] if first_item else []
 
 
+def normalize_trigger_mode(raw_value: Any) -> str:
+    value = str(raw_value).strip().lower()
+    return value if value in {"periodic", "timed"} else "periodic"
+
+
+def normalize_schedule_time(raw_value: Any) -> str:
+    value = str(raw_value).strip()
+    if len(value) != 5 or value[2] != ":":
+        return ""
+    hour_text, minute_text = value.split(":", 1)
+    if not (hour_text.isdigit() and minute_text.isdigit()):
+        return ""
+    hour = int(hour_text)
+    minute = int(minute_text)
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        return ""
+    return f"{hour:02d}:{minute:02d}"
+
+
 def _normalize_rule(raw_rule: dict[str, Any]) -> dict[str, Any] | None:
     keyword = str(raw_rule.get("keyword", "")).strip()
     types = normalize_attachment_types(raw_rule.get("types", []))
@@ -33,6 +52,8 @@ def _normalize_rule(raw_rule: dict[str, Any]) -> dict[str, Any] | None:
     mailbox_alias = str(raw_rule.get("mailbox_alias", "")).strip()
     script_path = str(raw_rule.get("script_path", "")).strip()
     script_output_dir = str(raw_rule.get("script_output_dir", "")).strip()
+    trigger_mode = normalize_trigger_mode(raw_rule.get("trigger_mode", "periodic"))
+    schedule_time = normalize_schedule_time(raw_rule.get("schedule_time", ""))
     poll_interval_seconds = raw_rule.get("poll_interval_seconds")
     max_attachment_size_mb = raw_rule.get("max_attachment_size_mb")
     try:
@@ -59,6 +80,8 @@ def _normalize_rule(raw_rule: dict[str, Any]) -> dict[str, Any] | None:
         "mailbox_alias": mailbox_alias,
         "script_path": script_path,
         "script_output_dir": script_output_dir,
+        "trigger_mode": trigger_mode,
+        "schedule_time": schedule_time,
         "poll_interval_seconds": poll_interval_seconds,
         "max_attachment_size_mb": max_attachment_size_mb,
     }
@@ -141,6 +164,18 @@ def list_enabled_rules() -> list[dict[str, Any]]:
         if not item.get("keyword"):
             continue
         rules.append(item)
+    return rules
+
+
+def list_enabled_rules_with_slots() -> list[tuple[int, dict[str, Any]]]:
+    payload = load_subject_attachment_rules()
+    rules: list[tuple[int, dict[str, Any]]] = []
+    for index, item in enumerate(payload.get("rules", []), start=1):
+        if not item.get("enabled", True):
+            continue
+        if not item.get("keyword"):
+            continue
+        rules.append((index, item))
     return rules
 
 

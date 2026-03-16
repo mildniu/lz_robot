@@ -5,6 +5,8 @@
 调用方式:
     python rule_processor_template.py <attachment_path> <output_dir>
 
+也可以把这个脚本单独打包成 exe 后给主程序调用。
+
 程序会额外注入以下环境变量:
     LZ_ATTACHMENT_PATH
     LZ_OUTPUT_DIR

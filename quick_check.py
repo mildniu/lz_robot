@@ -1,98 +1,129 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-快速诊断：检查文件夹监测配置
-"""
+"""量子推送机器人快速自检"""
 
-import sys
+from __future__ import annotations
+
 import json
+import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
 
-def quick_check():
-    """快速检查配置"""
-    print("=" * 70)
-    print("Quick Configuration Check")
-    print("=" * 70)
+def load_json(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
 
-    # 读取配置
-    config_file = Path("settings/folder_monitor_config.json")
 
-    if not config_file.exists():
-        print("\n[ERROR] Config file not found!")
-        print("\nPlease:")
-        print("1. Start GUI: python gui_app.py")
-        print("2. Go to Settings page")
-        print("3. Configure folder monitor")
-        print("4. Save config")
+def print_section(title: str):
+    print("\n" + "=" * 72)
+    print(title)
+    print("=" * 72)
+
+
+def check_required_files():
+    print_section("1. 核心文件检查")
+    required_files = [
+        Path("gui_app.py"),
+        Path("start_gui.bat"),
+        Path("README.md"),
+        Path("QuantumBot.spec"),
+        Path("settings/app_config.json"),
+    ]
+    for file_path in required_files:
+        status = "OK" if file_path.exists() else "MISSING"
+        print(f"[{status}] {file_path}")
+
+
+def check_mail_rules():
+    print_section("2. 邮件检测规则")
+    rules_payload = load_json(Path("settings/subject_attachment_rules.json"))
+    rules = list(rules_payload.get("rules", []))
+    enabled_rules = [item for item in rules if item.get("enabled")]
+    print(f"规则总数: {len(rules)}")
+    print(f"启用规则: {len(enabled_rules)}")
+    if not enabled_rules:
+        print("[WARNING] 当前没有启用的邮件规则")
         return
 
-    with open(config_file, 'r', encoding='utf-8') as f:
-        config = json.load(f)
+    for index, rule in enumerate(enabled_rules, start=1):
+        keyword = str(rule.get("keyword", "")).strip() or "(未填写主题)"
+        mailbox_alias = str(rule.get("mailbox_alias", "")).strip() or "(未选邮箱)"
+        webhook_alias = str(rule.get("webhook_alias", "")).strip() or "(未选机器人)"
+        interval_seconds = int(rule.get("poll_interval_seconds", 0) or 0)
+        mode = "脚本处理" if str(rule.get("script_path", "")).strip() else "直接推送"
+        print(
+            f"- 规则{index}: {keyword} | 邮箱={mailbox_alias} | 机器人={webhook_alias} | "
+            f"间隔={interval_seconds}s | 模式={mode}"
+        )
 
-    print("\n[1] Checking folder monitors...")
+
+def check_folder_monitors():
+    print_section("3. 文件夹检测")
+    config = load_json(Path("settings/folder_monitor_config.json"))
+    enabled_count = 0
     for i in range(1, 4):
         key = f"folder_{i}"
-        if key in config:
-            cfg = config[key]
-            path = cfg.get("path", "")
-            webhook = cfg.get("webhook_url", "")
-            enabled = cfg.get("enabled", False)
+        cfg = config.get(key, {})
+        enabled = bool(cfg.get("enabled", False))
+        if enabled:
+            enabled_count += 1
+        path = str(cfg.get("path", "")).strip()
+        alias = str(cfg.get("webhook_alias", "")).strip()
+        print(
+            f"- {key}: {'启用' if enabled else '未启用'} | "
+            f"路径={path or '(空)'} | 机器人={alias or '(空)'}"
+        )
+    if enabled_count == 0:
+        print("[WARNING] 当前没有启用的文件夹检测项")
 
-            status = "[ENABLED]" if enabled else "[DISABLED]"
-            print(f"\n{key} {status}")
-            print(f"  Path: {path if path else '(empty)'}")
 
-            # 显示webhook的前50个字符
-            if webhook:
-                display_webhook = webhook[:50] + "..." if len(webhook) > 50 else webhook
-                print(f"  Webhook: {display_webhook}")
-                print(f"  Full URL length: {len(webhook)} characters")
-            else:
-                print(f"  Webhook: (empty)")
+def check_runtime_state():
+    print_section("4. 运行状态文件")
+    for file_path in [Path("state/mail_state.json"), Path("state/file_sent_state.json")]:
+        if not file_path.exists():
+            print(f"[INFO] {file_path} 不存在")
+            continue
+        try:
+            payload = json.loads(file_path.read_text(encoding="utf-8"))
+            print(f"[OK] {file_path} | 记录数={len(payload)}")
+        except Exception as exc:
+            print(f"[ERROR] {file_path} 读取失败: {exc}")
 
-    # 检查启用的监测
-    print("\n[2] Checking enabled monitors...")
-    enabled_monitors = []
-    for key, cfg in config.items():
-        if cfg.get("enabled", False):
-            enabled_monitors.append(key)
 
-    if not enabled_monitors:
-        print("[WARNING] No monitors are enabled!")
-        print("\nTo enable:")
-        print("1. Open GUI: python gui_app.py")
-        print("2. Go to Settings")
-        print("3. Check the enable checkbox")
-        print("4. Save config")
-    else:
-        print(f"[OK] {len(enabled_monitors)} monitor(s) enabled:")
-        for key in enabled_monitors:
-            cfg = config[key]
-            webhook = cfg.get("webhook_url", "")
-            if webhook:
-                print(f"  - {key}: Webhook configured")
-            else:
-                print(f"  - {key}: [WARNING] Webhook is empty!")
+def check_packaging_assets():
+    print_section("5. 打包资源检查")
+    spec_files = [Path("QuantumBot.spec"), Path("QuantumBot.mac.spec")]
+    forbidden_text = "GUI_V3_README.md"
+    for spec_path in spec_files:
+        if not spec_path.exists():
+            print(f"[MISSING] {spec_path}")
+            continue
+        content = spec_path.read_text(encoding="utf-8")
+        if forbidden_text in content:
+            print(f"[WARNING] {spec_path} 仍包含旧文件名 {forbidden_text}")
+        else:
+            print(f"[OK] {spec_path} 未发现旧文件名引用")
 
-    print("\n" + "=" * 70)
-    print("Quick Check Complete")
-    print("=" * 70)
-    print("\nIf Webhook URLs are configured:")
-    print("  -> The GUI should display them in Settings")
-    print("  -> Click in the input box to see full URL")
-    print("  -> Use arrow keys to scroll through long URLs")
-    print("\nTo test folder monitoring:")
-    print("  1. Start GUI: python gui_app.py")
-    print("  2. Go to Monitor page")
-    print("  3. Click Start button")
-    print()
+
+def main():
+    print("=" * 72)
+    print("量子推送机器人 Quick Check")
+    print("=" * 72)
+    check_required_files()
+    check_mail_rules()
+    check_folder_monitors()
+    check_runtime_state()
+    check_packaging_assets()
+    print("\n检查完成。")
+
 
 if __name__ == "__main__":
     try:
-        quick_check()
-    except Exception as e:
-        print(f"\n[ERROR] {e}")
-        import traceback
-        traceback.print_exc()
+        main()
+    except Exception as exc:
+        print(f"\n[ERROR] {exc}")
+        raise

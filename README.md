@@ -1,8 +1,10 @@
-# 量子推送机器人 v4.0
+# 量子推送机器人 v5.0
 
 桌面程序（CustomTkinter），支持长期运行的两类检测任务：
 - 邮件检测：按“邮箱检测规则”拉取邮件并筛选附件后推送到量子机器人。
 - 文件夹检测：监控本地目录新文件/变更并推送到量子机器人。
+- 规则处理程序支持 `.py` 和 `.exe`；如需独立分发，建议把常用脚本单独打包为 EXE 后再接入规则。
+- 邮件规则支持两种检测方式：`周期检测`（每隔 N 分钟）和 `定时检测`（每天固定时刻一次）。
 
 ## 目录结构
 
@@ -13,7 +15,11 @@
 - `state/`：仅运行状态（去重与处理进度）
 - `QuantumBot.spec`：PyInstaller 打包配置
 
-## 配置文件（v4.0）
+桌面启动脚本：
+
+- `start_gui.bat`
+
+## 配置文件（v5.0）
 
 程序不再依赖 `.env` 兜底；未配置完整时任务不会启动。
 
@@ -74,6 +80,11 @@ pyinstaller --noconfirm --clean QuantumBot.spec
 产物：
 
 - `dist/QuantumBot/QuantumBot.exe`
+
+说明：
+
+- `QuantumBot.spec`、`QuantumBot.mac.spec` 中不再引用旧版 `GUI_V3_README.md`
+- 当前入口统一为 `gui_app.py`
 
 ## Git 上传规则（已更新）
 

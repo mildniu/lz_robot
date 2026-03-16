@@ -14,7 +14,6 @@ hiddenimports += collect_submodules("customtkinter")
 hiddenimports += collect_submodules("watchdog")
 
 for name in [
-    "GUI_V3_README.md",
     "README.md",
     "MULTIPLE_KEYWORDS.md",
     "settings/.gitkeep",
@@ -26,7 +25,7 @@ for name in [
 
 for name in [
     "logo_quantum_telecom.png",
-    "1.ico",
+    "ico_quantum_telecom.ico",
 ]:
     src = project_dir / "icon" / name
     if src.exists():
@@ -61,7 +60,11 @@ exe = EXE(
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
-    icon=str(project_dir / "icon/1.ico") if (project_dir / "icon/1.ico").exists() else None,
+    icon=(
+        str(project_dir / "icon/ico_quantum_telecom.ico")
+        if (project_dir / "icon/ico_quantum_telecom.ico").exists()
+        else None
+    ),
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
@@ -80,6 +83,10 @@ coll = COLLECT(
 app = BUNDLE(
     coll,
     name="QuantumBot.app",
-    icon=str(project_dir / "icon/1.ico") if (project_dir / "icon/1.ico").exists() else None,
+    icon=(
+        str(project_dir / "icon/ico_quantum_telecom.ico")
+        if (project_dir / "icon/ico_quantum_telecom.ico").exists()
+        else None
+    ),
     bundle_identifier=None,
 )
