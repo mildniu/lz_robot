@@ -14,16 +14,6 @@ hiddenimports += collect_submodules("customtkinter")
 hiddenimports += collect_submodules("watchdog")
 
 for name in [
-    "README.md",
-    "MULTIPLE_KEYWORDS.md",
-    "settings/.gitkeep",
-    "state/.gitkeep",
-]:
-    src = project_dir / name
-    if src.exists():
-        datas.append((str(src), "."))
-
-for name in [
     "logo_quantum_telecom.png",
     "ico_quantum_telecom.ico",
 ]:
@@ -40,7 +30,16 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=[
+        "matplotlib",
+        "numpy",
+        "pandas",
+        "scipy",
+        "IPython",
+        "jupyter",
+        "notebook",
+        "pytest",
+    ],
     noarchive=False,
     optimize=0,
 )

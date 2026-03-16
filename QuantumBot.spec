@@ -14,17 +14,7 @@ hiddenimports = []
 hiddenimports += collect_submodules("customtkinter")
 hiddenimports += collect_submodules("watchdog")
 
-# Bundle default docs/templates so first run has references.
-for name in [
-    "README.md",
-    "MULTIPLE_KEYWORDS.md",
-    "settings/.gitkeep",
-    "state/.gitkeep",
-]:
-    src = project_dir / name
-    if src.exists():
-        datas.append((str(src), "."))
-
+# Only bundle runtime-required static assets to keep the package lean.
 for name in [
     "logo_quantum_telecom.png",
     "ico_quantum_telecom.ico",
@@ -32,11 +22,6 @@ for name in [
     src = project_dir / "icon" / name
     if src.exists():
         datas.append((str(src), "icon"))
-
-# Bundle optional startup script for Windows users.
-startup_bat = project_dir / "start_gui.bat"
-if startup_bat.exists():
-    datas.append((str(startup_bat), "."))
 
 a = Analysis(
     ["gui_app.py"],
@@ -47,7 +32,16 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=[
+        "matplotlib",
+        "numpy",
+        "pandas",
+        "scipy",
+        "IPython",
+        "jupyter",
+        "notebook",
+        "pytest",
+    ],
     noarchive=False,
     optimize=0,
 )
