@@ -74,17 +74,19 @@ py -3.11 -m venv .venv-pack
 python -m pip install --upgrade pip
 pip install -r requirements.txt -r requirements_gui.txt
 pip install pyinstaller
-pyinstaller --noconfirm --clean QuantumBot.spec
+.\build_release.ps1
 ```
 
 产物：
 
 - `dist/QuantumBot/QuantumBot.exe`
+- `dist/QuantumBot/scripts/`
 
 说明：
 
 - `QuantumBot.spec`、`QuantumBot.mac.spec` 中不再引用旧版 `GUI_V3_README.md`
 - 当前入口统一为 `gui_app.py`
+- `build_release.ps1` 会在最终成品根目录生成 `scripts/`，并放入脚本模板与推送辅助文件
 
 ## Git 上传规则（已更新）
 
