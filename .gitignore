@@ -1,9 +1,17 @@
 # Python
 __pycache__/
 *.py[cod]
+*.pyo
+*.pyd
 *$py.class
 *.so
 .Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
 build/
 develop-eggs/
 dist/
@@ -39,6 +47,8 @@ env/
 # OS
 .DS_Store
 ._*
+Thumbs.db
+desktop.ini
 
 # Runtime state files
 state/*.json
@@ -50,3 +60,7 @@ settings/*.json
 
 # Logs
 *.log
+
+# Temporary files
+*.tmp
+*.temp
