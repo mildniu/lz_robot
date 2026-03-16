@@ -33,12 +33,12 @@ pip install -r requirements_gui.txt
 
 ### 方法1: 使用启动脚本
 ```powershell
-start_gui_v3.bat
+start_gui.bat
 ```
 
 ### 方法2: 命令行启动
 ```powershell
-python gui_app_v3.py
+python gui_app.py
 ```
 
 ## 🎯 使用指南

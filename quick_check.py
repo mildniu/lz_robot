@@ -22,7 +22,7 @@ def quick_check():
     if not config_file.exists():
         print("\n[ERROR] Config file not found!")
         print("\nPlease:")
-        print("1. Start GUI: python gui_app_v3.py")
+        print("1. Start GUI: python gui_app.py")
         print("2. Go to Settings page")
         print("3. Configure folder monitor")
         print("4. Save config")
@@ -62,7 +62,7 @@ def quick_check():
     if not enabled_monitors:
         print("[WARNING] No monitors are enabled!")
         print("\nTo enable:")
-        print("1. Open GUI: python gui_app_v3.py")
+        print("1. Open GUI: python gui_app.py")
         print("2. Go to Settings")
         print("3. Check the enable checkbox")
         print("4. Save config")
@@ -84,7 +84,7 @@ def quick_check():
     print("  -> Click in the input box to see full URL")
     print("  -> Use arrow keys to scroll through long URLs")
     print("\nTo test folder monitoring:")
-    print("  1. Start GUI: python gui_app_v3.py")
+    print("  1. Start GUI: python gui_app.py")
     print("  2. Go to Monitor page")
     print("  3. Click Start button")
     print()

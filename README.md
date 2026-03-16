@@ -1,4 +1,4 @@
-# 量子推送机器人 v3.1
+# 量子推送机器人 v4.0
 
 桌面程序（CustomTkinter），支持长期运行的两类检测任务：
 - 邮件检测：按“邮箱检测规则”拉取邮件并筛选附件后推送到量子机器人。
@@ -6,14 +6,14 @@
 
 ## 目录结构
 
-- `gui_app_v3.py`：桌面入口
+- `gui_app.py`：桌面入口
 - `desktop_pages/`：UI 页面模块
 - `mail_forwarder/`：检测、筛选、上传、推送核心逻辑
 - `settings/`：全部业务配置（可持久化）
 - `state/`：仅运行状态（去重与处理进度）
 - `QuantumBot.spec`：PyInstaller 打包配置
 
-## 配置文件（v3.1）
+## 配置文件（v4.0）
 
 程序不再依赖 `.env` 兜底；未配置完整时任务不会启动。
 
@@ -43,13 +43,13 @@ pip install -r requirements_gui.txt
 ## 启动
 
 ```bash
-python gui_app_v3.py
+python gui_app.py
 ```
 
 Windows 也可使用：
 
 ```bat
-start_gui_v3.bat
+start_gui.bat
 ```
 
 ## 快速自检

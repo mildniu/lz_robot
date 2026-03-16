@@ -47,8 +47,8 @@ def _default_payload() -> dict[str, Any]:
         "UI_LOG_POLL_MS": "100",
         "AUTO_SCROLL_LOG": "true",
         "UI_SCALE": "1.0",
-        "APP_TITLE": "量子推送机器人 v3.1",
-        "APP_FOOTER_TEXT": "v3.1\nby 不丢西瓜der",
+        "APP_TITLE": "量子推送机器人 v4.0",
+        "APP_FOOTER_TEXT": "v4.0\nby 不丢西瓜der",
     }
 
 
@@ -145,8 +145,8 @@ class AppConfig:
     ui_log_poll_ms: int = 100
     auto_scroll_log: bool = True
     ui_scale: float = 1.0
-    app_title: str = "量子推送机器人 v3.1"
-    app_footer_text: str = "v3.1\nby 不丢西瓜der"
+    app_title: str = "量子推送机器人 v4.0"
+    app_footer_text: str = "v4.0\nby 不丢西瓜der"
 
     @property
     def max_attachment_size_bytes(self) -> int:
@@ -222,6 +222,6 @@ def load_config() -> AppConfig:
         ui_log_poll_ms=parse_positive_int(payload.get("UI_LOG_POLL_MS", "100"), 100),
         auto_scroll_log=parse_bool(payload.get("AUTO_SCROLL_LOG", "true"), True),
         ui_scale=parse_positive_float(payload.get("UI_SCALE", "1.0"), 1.0),
-        app_title=str(payload.get("APP_TITLE", "量子推送机器人 v3.1")).strip() or "量子推送机器人 v3.1",
-        app_footer_text=str(payload.get("APP_FOOTER_TEXT", "v3.1\nby 不丢西瓜der")) or "v3.1\nby 不丢西瓜der",
+        app_title=str(payload.get("APP_TITLE", "量子推送机器人 v4.0")).strip() or "量子推送机器人 v4.0",
+        app_footer_text=str(payload.get("APP_FOOTER_TEXT", "v4.0\nby 不丢西瓜der")) or "v4.0\nby 不丢西瓜der",
     )

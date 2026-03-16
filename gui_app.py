@@ -16,8 +16,8 @@ except Exception:  # pragma: no cover - runtime fallback for missing pillow
 from desktop_pages import AboutPage, BotTestPage, ExecutePage, FolderMonitorPage, LogHandler, SettingsPage
 from mail_forwarder.config import load_config, upsert_env_file
 
-APP_TITLE = "量子推送机器人 v3.1"
-APP_FOOTER_TEXT = "v3.1\nby 不丢西瓜der"
+APP_TITLE = "量子推送机器人 v4.0"
+APP_FOOTER_TEXT = "v4.0\nby 不丢西瓜der"
 
 
 def runtime_base_dir() -> Path:

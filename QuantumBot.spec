@@ -35,12 +35,12 @@ for name in [
         datas.append((str(src), "icon"))
 
 # Bundle optional startup script for Windows users.
-startup_bat = project_dir / "start_gui_v3.bat"
+startup_bat = project_dir / "start_gui.bat"
 if startup_bat.exists():
     datas.append((str(startup_bat), "."))
 
 a = Analysis(
-    ["gui_app_v3.py"],
+    ["gui_app.py"],
     pathex=[str(project_dir)],
     binaries=[],
     datas=datas,

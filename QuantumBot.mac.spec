@@ -33,7 +33,7 @@ for name in [
         datas.append((str(src), "icon"))
 
 a = Analysis(
-    ["gui_app_v3.py"],
+    ["gui_app.py"],
     pathex=[str(project_dir)],
     binaries=[],
     datas=datas,

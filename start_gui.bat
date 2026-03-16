@@ -1,7 +1,7 @@
 @echo off
 cd /d "%~dp0"
 echo ============================================
-echo Mail Attachment Bot - Modern Desktop App v3.0
+echo Mail Attachment Bot - Modern Desktop App v4.0
 echo ============================================
 echo.
 
@@ -26,10 +26,10 @@ if errorlevel 1 (
     pip install watchdog
 )
 
-echo [2/3] Starting desktop application v3.0...
+echo [2/3] Starting desktop application v4.0...
 echo.
 
-python gui_app_v3.py
+python gui_app.py
 
 if errorlevel 1 (
     echo.

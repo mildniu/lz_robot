@@ -135,7 +135,7 @@ SUBJECT_KEYWORDS=华为,小米,OPPO,vivo
 - **更新**: 使用 `subject_keywords` 而非 `subject_exact`
 
 ### GUI
-- **位置**: `gui_app_v3.py`
+- **位置**: `gui_app.py`
 - **字段**: "主题关键字(逗号分隔)"
 - **保存**: 自动保存为 `SUBJECT_KEYWORDS`
 
@@ -166,7 +166,7 @@ SUBJECT_KEYWORDS=关键字1,关键字2,关键字3
 
 ### 2. 重启程序
 ```bash
-python gui_app_v3.py
+python gui_app.py
 ```
 
 ### 3. 查看日志
