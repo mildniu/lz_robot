@@ -268,6 +268,7 @@ class SettingsPage(ctk.CTkScrollableFrame):
             alias_menu.configure(values=option_values)
             if alias_var and alias_var.get() not in option_values:
                 alias_var.set(option_values[0])
+        self.refresh_rule_summaries_from_saved_payload()
 
     def refresh_mailbox_options(self):
         mailboxes, _ = self.collect_mailboxes_from_inputs(strict=False)
@@ -278,6 +279,7 @@ class SettingsPage(ctk.CTkScrollableFrame):
             mailbox_menu.configure(values=option_values)
             if mailbox_var and mailbox_var.get() not in option_values:
                 mailbox_var.set(option_values[0])
+        self.refresh_rule_summaries_from_saved_payload()
 
     def _build_rule_summary_text(
         self,
@@ -324,6 +326,27 @@ class SettingsPage(ctk.CTkScrollableFrame):
         else:
             detail_frame.pack(fill="x", padx=14, pady=(0, 12))
             toggle_btn.configure(text="收起")
+
+    def refresh_rule_summaries_from_saved_payload(self):
+        saved_rules = self.subject_rules_payload.get("rules", [])
+        for index in range(1, self.subject_rule_slot_count + 1):
+            summary_label = self.rule_summary_labels.get(index)
+            if not summary_label:
+                continue
+            rule_data = saved_rules[index - 1] if index <= len(saved_rules) else {}
+            trigger_mode = str(rule_data.get("trigger_mode", "periodic")).strip() or "periodic"
+            summary_label.configure(
+                text=self._build_rule_summary_text(
+                    enabled=bool(rule_data.get("enabled", False)) if rule_data else False,
+                    keyword=str(rule_data.get("keyword", "")).strip(),
+                    mailbox_alias=str(rule_data.get("mailbox_alias", "")).strip(),
+                    robot_alias=str(rule_data.get("webhook_alias", "")).strip(),
+                    script_path=str(rule_data.get("script_path", "")).strip(),
+                    trigger_mode=trigger_mode,
+                    schedule_time=str(rule_data.get("schedule_time", "")).strip(),
+                    poll_interval_seconds=rule_data.get("poll_interval_seconds") or self.config.poll_interval_seconds,
+                )
+            )
 
     def setup_ui(self):
         title = ctk.CTkLabel(self, text="⚙️ 系统设置", font=ctk.CTkFont(size=28, weight="bold"))
@@ -698,7 +721,16 @@ class SettingsPage(ctk.CTkScrollableFrame):
             card_header = ctk.CTkFrame(rule_card, fg_color="transparent")
             card_header.pack(fill="x", padx=14, pady=(12, 8))
 
-            enable_box = ctk.CTkCheckBox(card_header, text="", width=20, onvalue=True, offvalue=False)
+            enabled_var = tk.BooleanVar(value=enabled)
+            enable_box = ctk.CTkCheckBox(
+                card_header,
+                text="",
+                width=20,
+                onvalue=True,
+                offvalue=False,
+                variable=enabled_var,
+                command=lambda: None,
+            )
             if enabled:
                 enable_box.select()
             enable_box.pack(side="left", padx=(0, 8))
@@ -727,6 +759,19 @@ class SettingsPage(ctk.CTkScrollableFrame):
             )
             summary_label.pack(side="left", padx=(10, 0))
             self.rule_summary_labels[index] = summary_label
+
+            save_btn = ctk.CTkButton(
+                card_header,
+                text="保存规则",
+                width=84,
+                height=28,
+                font=ctk.CTkFont(size=11, weight="bold"),
+                fg_color="#D97706",
+                hover_color="#B45309",
+                text_color="white",
+                command=lambda target=index: self.save_single_subject_rule(target),
+            )
+            save_btn.pack(side="right", padx=(0, 8))
 
             toggle_btn = ctk.CTkButton(
                 card_header,
@@ -984,18 +1029,7 @@ class SettingsPage(ctk.CTkScrollableFrame):
             max_size_entry.pack(pady=(4, 0))
             self.entries[f"rule_{index}_max_size"] = max_size_entry
 
-        save_btn = ModernButton(
-            parent,
-            text="立即保存邮箱检测规则",
-            icon="💾",
-            command=self.save_subject_rule_settings,
-            height=50,
-            width=320,
-            font=ctk.CTkFont(size=16, weight="bold"),
-            fg_color="#D97706",
-            hover_color="#B45309",
-        )
-        save_btn.pack(anchor="w", padx=12, pady=(8, 14))
+        self.refresh_rule_summaries_from_saved_payload()
 
     def build_alias_tab(self, parent):
         card = ctk.CTkFrame(parent, fg_color=("gray95", "gray20"))
@@ -1414,11 +1448,187 @@ class SettingsPage(ctk.CTkScrollableFrame):
         except Exception as exc:
             messagebox.showerror("错误", f"保存别名配置失败:\n{exc}")
 
-    def save_subject_rule_settings(self):
+    def _collect_single_rule_payload(self, index: int) -> tuple[Optional[dict], list[str], bool]:
+        aliases, _ = self.collect_aliases_from_inputs(strict=False)
+        if not aliases:
+            aliases = self.alias_config.get("aliases", {})
+        mailboxes, _ = self.collect_mailboxes_from_inputs(strict=False)
+        if not mailboxes:
+            mailboxes = self.mailbox_config.get("mailboxes", [])
+        mailbox_alias_map = {
+            str(item.get("alias", "")).strip(): item
+            for item in mailboxes
+            if str(item.get("alias", "")).strip()
+        }
+        default_webhook_url = (self.config.webhook_send_url if self.config else "").strip()
+
+        keyword_entry = self.entries.get(f"rule_{index}_keyword")
+        types_entry = self.entries.get(f"rule_{index}_types")
+        names_entry = self.entries.get(f"rule_{index}_name_keywords")
+        interval_entry = self.entries.get(f"rule_{index}_interval")
+        schedule_entry = self.entries.get(f"rule_{index}_schedule_time")
+        max_size_entry = self.entries.get(f"rule_{index}_max_size")
+        script_entry = self.entries.get(f"rule_{index}_script_path")
+        output_dir_entry = self.entries.get(f"rule_{index}_script_output_dir")
+        enabled_checkbox = self.rule_checkboxes.get(f"rule_{index}_enabled")
+        alias_var = self.rule_alias_vars.get(f"rule_{index}_alias")
+        mailbox_alias_var = self.rule_mailbox_vars.get(f"rule_{index}_mailbox_alias")
+        trigger_mode_var = self.ui_vars.get(f"rule_{index}_trigger_mode")
+
+        enabled = enabled_checkbox.get() if enabled_checkbox else False
+        keyword = keyword_entry.get().strip() if keyword_entry else ""
+        raw_types = types_entry.get().strip() if types_entry else ""
+        raw_name_keywords = names_entry.get().strip() if names_entry else ""
+        raw_interval = interval_entry.get().strip() if interval_entry else ""
+        raw_schedule_time = schedule_entry.get().strip() if schedule_entry else ""
+        raw_max_size = max_size_entry.get().strip() if max_size_entry else ""
+        script_path = script_entry.get().strip() if script_entry else ""
+        script_output_dir = output_dir_entry.get().strip() if output_dir_entry else ""
+        trigger_mode_label = trigger_mode_var.get().strip() if trigger_mode_var else "周期检测"
+        trigger_mode = self._value_for_label(self.TRIGGER_LABEL_TO_VALUE, trigger_mode_label, "periodic")
+        parsed_name_keywords = parse_filename_keywords_input(raw_name_keywords)
+        selected_mailbox_alias = mailbox_alias_var.get().strip() if mailbox_alias_var else ""
+        if selected_mailbox_alias == self.NO_MAILBOX_LABEL:
+            selected_mailbox_alias = ""
+        selected_alias = alias_var.get().strip() if alias_var else ""
+        if selected_alias == self.NO_ALIAS_LABEL:
+            selected_alias = ""
+        if enabled and not selected_mailbox_alias and mailbox_alias_map:
+            selected_mailbox_alias = next(iter(mailbox_alias_map.keys()), "")
+        if enabled and not selected_alias and aliases:
+            selected_alias = next(iter(aliases.keys()), "")
+        webhook_url = aliases.get(selected_alias, "").strip()
+        if enabled and not webhook_url:
+            webhook_url = default_webhook_url
+
+        is_empty = (
+            not keyword
+            and not raw_types
+            and not raw_name_keywords
+            and not raw_interval
+            and not raw_schedule_time
+            and not raw_max_size
+            and not script_path
+            and not script_output_dir
+            and not selected_mailbox_alias
+            and not selected_alias
+            and not enabled
+        )
+        if is_empty:
+            return None, [], True
+
+        errors = []
+        if not keyword or not raw_types:
+            state_text = "已启用" if enabled else "未启用"
+            errors.append(f"规则{index}({state_text}): 主题关键字和附件格式必须同时填写")
+            return None, errors, False
+
+        parsed_types = parse_types_input(raw_types)
+        if any(separator in raw_types for separator in [",", ";", "|"]):
+            errors.append(f"规则{index}: 附件格式只允许填写一个值，例如 png")
+        elif not parsed_types:
+            errors.append(f"规则{index}: 附件格式无效，示例 png")
+
+        if any(separator in raw_name_keywords for separator in [",", ";", "|"]):
+            errors.append(f"规则{index}: 附件文件名关键字只允许填写一个值")
+
         try:
+            parsed_max_size = int(raw_max_size)
+            if parsed_max_size <= 0:
+                raise ValueError
+        except ValueError:
+            errors.append(f"规则{index}: 最大附件(MB)必须是大于0的整数")
+            parsed_max_size = None
+
+        if trigger_mode == "timed":
+            parsed_schedule_time = raw_schedule_time
+            try:
+                hour_text, minute_text = parsed_schedule_time.split(":", 1)
+                hour = int(hour_text)
+                minute = int(minute_text)
+                if not (0 <= hour <= 23 and 0 <= minute <= 59):
+                    raise ValueError
+            except Exception:
+                errors.append(f"规则{index}: 定时检测请输入有效时间，格式如 08:30")
+            parsed_interval_seconds = self.interval_minutes_to_seconds(
+                int(raw_interval) if raw_interval.isdigit() and int(raw_interval) > 0 else 1
+            )
+        else:
+            try:
+                parsed_interval_minutes = int(raw_interval)
+                if parsed_interval_minutes <= 0:
+                    raise ValueError
+            except ValueError:
+                errors.append(f"规则{index}: 周期检测时，轮询间隔(min)必须是大于0的整数")
+                parsed_interval_minutes = 1
+            parsed_interval_seconds = self.interval_minutes_to_seconds(parsed_interval_minutes)
+            parsed_schedule_time = ""
+
+        if enabled and not selected_mailbox_alias:
+            errors.append(f"规则{index}: 已启用但未选择所属邮箱")
+        elif enabled and selected_mailbox_alias not in mailbox_alias_map:
+            errors.append(f"规则{index}: 所属邮箱无效 - {selected_mailbox_alias}")
+
+        use_script = bool(script_path)
+        if use_script:
+            if not Path(script_path).exists():
+                errors.append(f"规则{index}: 脚本文件不存在 - {script_path}")
+            elif Path(script_path).suffix.lower() not in {'.py', '.exe'}:
+                errors.append(f"规则{index}: 仅支持选择 .py 或 .exe 处理程序")
+            if not script_output_dir:
+                errors.append(f"规则{index}: 选择脚本后必须填写输出目录")
+
+        if enabled and not webhook_url:
+            errors.append(f"规则{index}: 已启用但未配置可用的推送地址")
+
+        if errors:
+            return None, errors, False
+
+        return {
+            "enabled": bool(enabled),
+            "keyword": keyword,
+            "types": parsed_types,
+            "filename_keywords": parsed_name_keywords,
+            "mailbox_alias": selected_mailbox_alias,
+            "webhook_alias": selected_alias,
+            "webhook_url": webhook_url,
+            "script_path": script_path,
+            "script_output_dir": script_output_dir,
+            "trigger_mode": trigger_mode,
+            "schedule_time": parsed_schedule_time,
+            "poll_interval_seconds": parsed_interval_seconds,
+            "max_attachment_size_mb": parsed_max_size,
+        }, [], False
+
+    def save_single_subject_rule(self, index: int):
+        try:
+            rule_payload, rule_errors, is_empty = self._collect_single_rule_payload(index)
+            if rule_errors:
+                messagebox.showerror("验证失败", "\n".join(f"• {error}" for error in rule_errors))
+                return
+
+            current_rules = list(load_subject_attachment_rules().get("rules", []))
+            while len(current_rules) < index - 1:
+                current_rules.append({})
+
+            if is_empty:
+                if index <= len(current_rules):
+                    current_rules.pop(index - 1)
+            else:
+                if len(current_rules) >= index:
+                    current_rules[index - 1] = rule_payload
+                else:
+                    current_rules.append(rule_payload)
+
+            save_subject_attachment_rules(current_rules)
+            self.subject_rules_payload = load_subject_attachment_rules()
+            self.refresh_rule_summaries_from_saved_payload()
+
+            saved_rules = self.subject_rules_payload.get("rules", [])
             aliases, _ = self.collect_aliases_from_inputs(strict=False)
             if not aliases:
                 aliases = self.alias_config.get("aliases", {})
+            default_webhook_alias = self.alias_config.get("email_alias", "")
             mailboxes, _ = self.collect_mailboxes_from_inputs(strict=False)
             if not mailboxes:
                 mailboxes = self.mailbox_config.get("mailboxes", [])
@@ -1427,165 +1637,9 @@ class SettingsPage(ctk.CTkScrollableFrame):
                 for item in mailboxes
                 if str(item.get("alias", "")).strip()
             }
-            default_webhook_url = (self.config.webhook_send_url if self.config else "").strip()
-            default_webhook_alias = self.alias_config.get("email_alias", "")
-
-            subject_rules = []
-            subject_rule_errors = []
-            for index in range(1, self.subject_rule_slot_count + 1):
-                keyword_entry = self.entries.get(f"rule_{index}_keyword")
-                types_entry = self.entries.get(f"rule_{index}_types")
-                names_entry = self.entries.get(f"rule_{index}_name_keywords")
-                interval_entry = self.entries.get(f"rule_{index}_interval")
-                schedule_entry = self.entries.get(f"rule_{index}_schedule_time")
-                max_size_entry = self.entries.get(f"rule_{index}_max_size")
-                script_entry = self.entries.get(f"rule_{index}_script_path")
-                output_dir_entry = self.entries.get(f"rule_{index}_script_output_dir")
-                enabled_checkbox = self.rule_checkboxes.get(f"rule_{index}_enabled")
-                alias_var = self.rule_alias_vars.get(f"rule_{index}_alias")
-                mailbox_alias_var = self.rule_mailbox_vars.get(f"rule_{index}_mailbox_alias")
-                trigger_mode_var = self.ui_vars.get(f"rule_{index}_trigger_mode")
-
-                enabled = enabled_checkbox.get() if enabled_checkbox else False
-                keyword = keyword_entry.get().strip() if keyword_entry else ""
-                raw_types = types_entry.get().strip() if types_entry else ""
-                raw_name_keywords = names_entry.get().strip() if names_entry else ""
-                raw_interval = interval_entry.get().strip() if interval_entry else ""
-                raw_schedule_time = schedule_entry.get().strip() if schedule_entry else ""
-                raw_max_size = max_size_entry.get().strip() if max_size_entry else ""
-                script_path = script_entry.get().strip() if script_entry else ""
-                script_output_dir = output_dir_entry.get().strip() if output_dir_entry else ""
-                trigger_mode_label = trigger_mode_var.get().strip() if trigger_mode_var else "周期检测"
-                trigger_mode = self._value_for_label(self.TRIGGER_LABEL_TO_VALUE, trigger_mode_label, "periodic")
-                parsed_name_keywords = parse_filename_keywords_input(raw_name_keywords)
-                selected_mailbox_alias = mailbox_alias_var.get().strip() if mailbox_alias_var else ""
-                if selected_mailbox_alias == self.NO_MAILBOX_LABEL:
-                    selected_mailbox_alias = ""
-                selected_alias = alias_var.get().strip() if alias_var else ""
-                if selected_alias == self.NO_ALIAS_LABEL:
-                    selected_alias = ""
-                if enabled and not selected_mailbox_alias and mailbox_alias_map:
-                    selected_mailbox_alias = next(iter(mailbox_alias_map.keys()), "")
-                if enabled and not selected_alias and aliases:
-                    selected_alias = next(iter(aliases.keys()), "")
-                webhook_url = aliases.get(selected_alias, "").strip()
-                if enabled and not webhook_url:
-                    webhook_url = default_webhook_url
-
-                if (
-                    not keyword
-                    and not raw_types
-                    and not raw_name_keywords
-                    and not raw_interval
-                    and not raw_schedule_time
-                    and not raw_max_size
-                    and not script_path
-                    and not script_output_dir
-                    and not selected_mailbox_alias
-                    and not selected_alias
-                    and not enabled
-                ):
-                    continue
-                if not keyword or not raw_types:
-                    state_text = "已启用" if enabled else "未启用"
-                    subject_rule_errors.append(
-                        f"规则{index}({state_text}): 主题关键字和附件格式必须同时填写"
-                    )
-                    continue
-
-                parsed_types = parse_types_input(raw_types)
-                if any(separator in raw_types for separator in [",", ";", "|"]):
-                    subject_rule_errors.append(f"规则{index}: 附件格式只允许填写一个值，例如 png")
-                    continue
-                if not parsed_types:
-                    subject_rule_errors.append(f"规则{index}: 附件格式无效，示例 png")
-                    continue
-                if any(separator in raw_name_keywords for separator in [",", ";", "|"]):
-                    subject_rule_errors.append(f"规则{index}: 附件文件名关键字只允许填写一个值")
-                    continue
-                try:
-                    parsed_max_size = int(raw_max_size)
-                    if parsed_max_size <= 0:
-                        raise ValueError
-                except ValueError:
-                    subject_rule_errors.append(f"规则{index}: 最大附件(MB)必须是大于0的整数")
-                    continue
-
-                if trigger_mode == "timed":
-                    parsed_schedule_time = raw_schedule_time
-                    try:
-                        hour_text, minute_text = parsed_schedule_time.split(":", 1)
-                        hour = int(hour_text)
-                        minute = int(minute_text)
-                        if not (0 <= hour <= 23 and 0 <= minute <= 59):
-                            raise ValueError
-                    except Exception:
-                        subject_rule_errors.append(f"规则{index}: 定时检测请输入有效时间，格式如 08:30")
-                        continue
-                    parsed_interval_seconds = self.interval_minutes_to_seconds(
-                        int(raw_interval) if raw_interval.isdigit() and int(raw_interval) > 0 else 1
-                    )
-                else:
-                    try:
-                        parsed_interval_minutes = int(raw_interval)
-                        if parsed_interval_minutes <= 0:
-                            raise ValueError
-                    except ValueError:
-                        subject_rule_errors.append(f"规则{index}: 周期检测时，轮询间隔(min)必须是大于0的整数")
-                        continue
-                    parsed_interval_seconds = self.interval_minutes_to_seconds(parsed_interval_minutes)
-                    parsed_schedule_time = ""
-
-                if enabled and not selected_mailbox_alias:
-                    subject_rule_errors.append(f"规则{index}: 已启用但未选择所属邮箱")
-                    continue
-                if enabled and selected_mailbox_alias not in mailbox_alias_map:
-                    subject_rule_errors.append(f"规则{index}: 所属邮箱无效 - {selected_mailbox_alias}")
-                    continue
-                use_script = bool(script_path)
-                if use_script:
-                    if not Path(script_path).exists():
-                        subject_rule_errors.append(f"规则{index}: 脚本文件不存在 - {script_path}")
-                        continue
-                    if Path(script_path).suffix.lower() not in {".py", ".exe"}:
-                        subject_rule_errors.append(f"规则{index}: 仅支持选择 .py 或 .exe 处理程序")
-                        continue
-                    if not script_output_dir:
-                        subject_rule_errors.append(f"规则{index}: 选择脚本后必须填写输出目录")
-                        continue
-                if enabled and not webhook_url:
-                    subject_rule_errors.append(f"规则{index}: 已启用但未配置可用的推送地址")
-                    continue
-
-                subject_rules.append(
-                    {
-                        "enabled": bool(enabled),
-                        "keyword": keyword,
-                        "types": parsed_types,
-                        "filename_keywords": parsed_name_keywords,
-                        "mailbox_alias": selected_mailbox_alias,
-                        "webhook_alias": selected_alias,
-                        "webhook_url": webhook_url,
-                        "script_path": script_path,
-                        "script_output_dir": script_output_dir,
-                        "trigger_mode": trigger_mode,
-                        "schedule_time": parsed_schedule_time,
-                        "poll_interval_seconds": parsed_interval_seconds,
-                        "max_attachment_size_mb": parsed_max_size,
-                    }
-                )
-
-            if subject_rule_errors:
-                if not subject_rules:
-                    messagebox.showerror("验证失败", "\n".join(f"• {error}" for error in subject_rule_errors))
-                    return
-
-            save_subject_attachment_rules(subject_rules)
-            self.subject_rules_payload = {"rules": subject_rules}
-            enabled_count = sum(1 for item in subject_rules if item.get("enabled"))
             cfg = load_config()
-            default_rule = next((item for item in subject_rules if item.get("enabled")), None) or (
-                subject_rules[0] if subject_rules else None
+            default_rule = next((item for item in saved_rules if item.get("enabled")), None) or (
+                saved_rules[0] if saved_rules else None
             )
             saved_poll = str(default_rule.get("poll_interval_seconds")) if default_rule else str(cfg.poll_interval_seconds)
             saved_max = str(default_rule.get("max_attachment_size_mb")) if default_rule else str(cfg.max_attachment_size_mb)
@@ -1609,12 +1663,13 @@ class SettingsPage(ctk.CTkScrollableFrame):
                 },
             )
             self._notify_config_changed()
-            success_msg = f"邮箱检测规则已保存\n\n共 {len(subject_rules)} 条，启用 {enabled_count} 条"
-            if subject_rule_errors:
-                success_msg += "\n\n以下规则未保存：\n" + "\n".join(f"• {error}" for error in subject_rule_errors)
-            messagebox.showinfo("保存成功", success_msg)
+
+            if is_empty:
+                messagebox.showinfo("保存成功", f"规则{index}已清空并保存")
+            else:
+                messagebox.showinfo("保存成功", f"规则{index}已保存，顶部摘要已更新为最新已保存内容")
         except Exception as exc:
-            messagebox.showerror("错误", f"保存邮箱检测规则失败:\n{exc}")
+            messagebox.showerror("错误", f"保存规则{index}失败:\n{exc}")
 
     def save_folder_settings(self):
         try:
