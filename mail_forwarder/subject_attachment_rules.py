@@ -99,21 +99,21 @@ def load_subject_attachment_rules() -> dict[str, Any]:
     rules = []
     for item in raw.get("rules", []):
         if not isinstance(item, dict):
+            rules.append({})
             continue
         normalized = _normalize_rule(item)
-        if normalized:
-            rules.append(normalized)
+        rules.append(normalized or {})
     return {"rules": rules}
 
 
 def save_subject_attachment_rules(rules: list[dict[str, Any]]) -> None:
-    normalized_rules = []
+    normalized_rules: list[dict[str, Any]] = []
     for item in rules:
         if not isinstance(item, dict):
+            normalized_rules.append({})
             continue
         normalized = _normalize_rule(item)
-        if normalized:
-            normalized_rules.append(normalized)
+        normalized_rules.append(normalized or {})
 
     RULES_FILE.parent.mkdir(parents=True, exist_ok=True)
     tmp_file = RULES_FILE.with_suffix(RULES_FILE.suffix + ".tmp")

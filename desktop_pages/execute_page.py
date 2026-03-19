@@ -15,6 +15,8 @@ from .common import LogHandler, ModernButton
 
 
 class ExecutePage(ctk.CTkFrame):
+    THREAD_JOIN_TIMEOUT_SECONDS = 5
+
     def __init__(self, master, log_handler: LogHandler, auto_scroll_log: bool = True, **kwargs):
         super().__init__(master, **kwargs)
         self.log_handler = log_handler
@@ -782,9 +784,13 @@ class ExecutePage(ctk.CTkFrame):
 
         worker = runtime.get("thread")
         if worker and worker.is_alive():
-            worker.join(timeout=5)
+            worker.join(timeout=self.THREAD_JOIN_TIMEOUT_SECONDS)
         if worker and worker.is_alive():
-            self.log_handler.warning("线程仍在退出中，可能正等待网络请求超时", source=rule_id)
+            self._set_rule_card_state(rule_id, running=False, text="🟡 停止中", color="#FFB300")
+            self.log_handler.warning(
+                f"线程仍在退出中，可能正等待网络或脚本超时（>{self.THREAD_JOIN_TIMEOUT_SECONDS}秒）",
+                source=rule_id,
+            )
             return
 
         if not runtime.get("pending_remove"):

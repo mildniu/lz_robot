@@ -2,11 +2,43 @@ import email
 import imaplib
 import socket
 import time
+import base64
 from datetime import datetime
 from email.message import Message
 from typing import Optional, Tuple
 
 from .mime_utils import decode_mime_text
+
+
+def _encode_imap_utf7(value: str) -> bytes:
+    """Encode mailbox names using IMAP modified UTF-7 for non-ASCII folders."""
+    if not value:
+        return b"INBOX"
+
+    chunks: list[bytes] = []
+    buffer: list[str] = []
+
+    def flush_buffer() -> None:
+        if not buffer:
+            return
+        encoded = "".join(buffer).encode("utf-16-be")
+        modified = base64.b64encode(encoded).rstrip(b"=").replace(b"/", b",")
+        chunks.append(b"&" + modified + b"-")
+        buffer.clear()
+
+    for ch in value:
+        code = ord(ch)
+        if 0x20 <= code <= 0x7E:
+            flush_buffer()
+            if ch == "&":
+                chunks.append(b"&-")
+            else:
+                chunks.append(ch.encode("ascii"))
+        else:
+            buffer.append(ch)
+
+    flush_buffer()
+    return b"".join(chunks)
 
 
 class ImapMailClient:
@@ -30,8 +62,16 @@ class ImapMailClient:
     def __enter__(self) -> "ImapMailClient":
         # Prevent network hangs from blocking the worker forever.
         self._imap = imaplib.IMAP4_SSL(self.host, self.port, timeout=self.timeout_seconds)
+        # The Qt settings page allows Chinese mailbox folder names, and some accounts may
+        # also contain non-ASCII credentials. Switch the client to UTF-8 command encoding
+        # before LOGIN/SELECT so imaplib does not fail early with ASCII encoding errors.
+        if any(any(ord(ch) > 127 for ch in str(value)) for value in (self.username, self.password, self.mailbox)):
+            try:
+                self._imap._mode_utf8()
+            except Exception:
+                pass
         self._imap.login(self.username, self.password)
-        status, _ = self._imap.select(self.mailbox, readonly=True)
+        status, _ = self._imap.select(_encode_imap_utf7(self.mailbox), readonly=True)
         if status != "OK":
             raise RuntimeError(f"Failed to select mailbox: {self.mailbox}")
         return self

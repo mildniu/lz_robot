@@ -61,6 +61,24 @@ def emit_event(callback: EventCallback, level: str, message: str) -> None:
         callback(level, message)
 
 
+def describe_runtime_exception(exc: Exception) -> str:
+    text = str(exc).strip() or exc.__class__.__name__
+    lowered = text.lower()
+    if "timed out" in lowered or "timeout" in lowered or "超时" in text:
+        return f"{text}；建议检查网络连通性、目标服务响应速度或适当调大超时"
+    if "failed to select mailbox" in lowered:
+        return f"{text}；建议检查邮箱文件夹名称是否正确，例如 INBOX"
+    if "login" in lowered or "authentication" in lowered or "auth" in lowered:
+        return f"{text}；建议检查邮箱账号、密码或授权码是否有效"
+    if "upload failed" in lowered or "send file message failed" in lowered or "send image message failed" in lowered:
+        return f"{text}；建议检查 webhook 地址是否有效、机器人服务是否可用"
+    if "webhook_send_url must include query param: key" in lowered:
+        return f"{text}；当前机器人地址缺少 key 参数"
+    if "attachment too large" in lowered:
+        return f"{text}；可调大规则中的最大附件(MB)或缩小原始附件"
+    return text
+
+
 def build_webhook_client(send_url: str) -> QuantumWebhookClient:
     return QuantumWebhookClient(send_url=send_url, upload_url=parse_upload_url(send_url))
 
@@ -158,6 +176,7 @@ def run_rule_script(
     mailbox_alias: str,
     webhook_alias: str,
     webhook_url: str,
+    timeout_seconds: int,
     event_callback: EventCallback = None,
 ) -> None:
     script_path = script_path.expanduser().resolve()
@@ -191,6 +210,7 @@ def run_rule_script(
     emit_event(event_callback, "INFO", f"脚本输入附件: {attachment_path.name}")
     emit_event(event_callback, "INFO", f"脚本输入附件路径: {attachment_path}")
     emit_event(event_callback, "INFO", f"脚本输出目录: {output_dir}")
+    emit_event(event_callback, "INFO", f"处理程序超时: {timeout_seconds} 秒")
 
     env = os.environ.copy()
     env["PYTHONUTF8"] = "1"
@@ -221,13 +241,22 @@ def run_rule_script(
         ]
     else:
         raise RuntimeError(f"不支持的处理程序类型: {script_path.suffix}，仅支持 .py 或 .exe")
-    completed = subprocess.run(
-        command,
-        capture_output=True,
-        timeout=300,
-        cwd=str(script_path.parent),
-        env=env,
-    )
+    try:
+        completed = subprocess.run(
+            command,
+            capture_output=True,
+            timeout=timeout_seconds,
+            cwd=str(script_path.parent),
+            env=env,
+        )
+    except subprocess.TimeoutExpired as exc:
+        stdout_text = decode_process_output(getattr(exc, "stdout", b"") or b"").strip()
+        stderr_text = decode_process_output(getattr(exc, "stderr", b"") or b"").strip()
+        if stdout_text:
+            emit_event(event_callback, "INFO", f"脚本超时前输出: {stdout_text}")
+        if stderr_text:
+            emit_event(event_callback, "WARNING", f"脚本超时前错误输出: {stderr_text}")
+        raise RuntimeError(f"处理程序执行超时，已超过 {timeout_seconds} 秒")
     stdout_text = decode_process_output(completed.stdout or b"").strip()
     stderr_text = decode_process_output(completed.stderr or b"").strip()
     if stdout_text:
@@ -437,6 +466,7 @@ class MailProcessingService:
                         mailbox_alias=mailbox_alias,
                         webhook_alias=webhook_alias,
                         webhook_url=target_send_url,
+                        timeout_seconds=max(30, int(self.config.script_timeout_seconds or 300)),
                         event_callback=event_callback,
                     )
                 else:
@@ -508,7 +538,7 @@ class MailProcessingService:
                 rule_keyword=keyword,
                 mailbox_alias=mailbox_alias,
                 mailbox_folder=str(mailbox_config.get("mailbox", "INBOX")).strip() or "INBOX",
-                reason=str(exc),
+                reason=describe_runtime_exception(exc),
             )
 
     def process_rule_batch(
@@ -589,7 +619,7 @@ class MailProcessingService:
                     rule_keyword=keyword,
                     mailbox_alias=mailbox_alias,
                     mailbox_folder=str(mailbox_config.get("mailbox", "INBOX")).strip() or "INBOX",
-                    reason=str(exc),
+                    reason=describe_runtime_exception(exc),
                 )
             results.append(rule_result)
 

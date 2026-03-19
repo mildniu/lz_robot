@@ -49,15 +49,25 @@ def check_mail_rules():
         print("[WARNING] 当前没有启用的邮件规则")
         return
 
-    for index, rule in enumerate(enabled_rules, start=1):
+    for index, rule in enumerate(rules, start=1):
+        if not isinstance(rule, dict) or not rule:
+            print(f"- 槽位{index}: (空)")
+            continue
         keyword = str(rule.get("keyword", "")).strip() or "(未填写主题)"
         mailbox_alias = str(rule.get("mailbox_alias", "")).strip() or "(未选邮箱)"
         webhook_alias = str(rule.get("webhook_alias", "")).strip() or "(未选机器人)"
         interval_seconds = int(rule.get("poll_interval_seconds", 0) or 0)
+        trigger_mode = str(rule.get("trigger_mode", "periodic")).strip() or "periodic"
+        trigger_text = (
+            f"定时={str(rule.get('schedule_time', '')).strip() or '--:--'}"
+            if trigger_mode == "timed"
+            else f"周期={interval_seconds}s"
+        )
         mode = "脚本处理" if str(rule.get("script_path", "")).strip() else "直接推送"
+        status = "启用" if rule.get("enabled") else "未启用"
         print(
-            f"- 规则{index}: {keyword} | 邮箱={mailbox_alias} | 机器人={webhook_alias} | "
-            f"间隔={interval_seconds}s | 模式={mode}"
+            f"- 槽位{index}: {status} | {keyword} | 邮箱={mailbox_alias} | 机器人={webhook_alias} | "
+            f"{trigger_text} | 模式={mode}"
         )
 
 
@@ -109,6 +119,21 @@ def check_packaging_assets():
             print(f"[OK] {spec_path} 未发现旧文件名引用")
 
 
+def check_stability_settings():
+    print_section("6. 稳定性配置")
+    app_config = load_json(Path("settings/app_config.json"))
+    timeout_seconds = str(app_config.get("SCRIPT_TIMEOUT_SECONDS", "")).strip() or "300"
+    print(f"- 处理程序超时: {timeout_seconds}s")
+    try:
+        parsed = int(timeout_seconds)
+        if parsed < 30:
+            print("[WARNING] SCRIPT_TIMEOUT_SECONDS 过小，复杂脚本可能被提前中断")
+        else:
+            print("[OK] 处理程序超时配置有效")
+    except ValueError:
+        print("[ERROR] SCRIPT_TIMEOUT_SECONDS 不是整数")
+
+
 def main():
     print("=" * 72)
     print("量子推送机器人 Quick Check")
@@ -118,6 +143,7 @@ def main():
     check_folder_monitors()
     check_runtime_state()
     check_packaging_assets()
+    check_stability_settings()
     print("\n检查完成。")
 
 

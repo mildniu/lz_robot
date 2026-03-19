@@ -1248,6 +1248,21 @@ class SettingsPage(ctk.CTkScrollableFrame):
         auto_scroll_box.pack(side="left", padx=(24, 0))
         self.ui_vars["auto_scroll_log"] = auto_scroll_var
 
+        row4 = ctk.CTkFrame(fields, fg_color="transparent")
+        row4.pack(fill="x", pady=6)
+        ctk.CTkLabel(row4, text="处理程序超时(s)", width=120, anchor="w").pack(side="left", padx=(0, 8))
+        timeout_entry = ctk.CTkEntry(row4, width=140, placeholder_text="建议 300")
+        timeout_entry.insert(0, str(self.config.script_timeout_seconds))
+        timeout_entry.pack(side="left")
+        self.entries["ui_script_timeout_seconds"] = timeout_entry
+
+        ctk.CTkLabel(
+            row4,
+            text="脚本/.exe 处理单个附件的最长等待时间",
+            font=ctk.CTkFont(size=11),
+            text_color=("gray35", "gray70"),
+        ).pack(side="left", padx=(16, 0))
+
         save_btn = ModernButton(
             parent,
             text="保存界面设置",
@@ -1449,12 +1464,8 @@ class SettingsPage(ctk.CTkScrollableFrame):
             messagebox.showerror("错误", f"保存别名配置失败:\n{exc}")
 
     def _collect_single_rule_payload(self, index: int) -> tuple[Optional[dict], list[str], bool]:
-        aliases, _ = self.collect_aliases_from_inputs(strict=False)
-        if not aliases:
-            aliases = self.alias_config.get("aliases", {})
-        mailboxes, _ = self.collect_mailboxes_from_inputs(strict=False)
-        if not mailboxes:
-            mailboxes = self.mailbox_config.get("mailboxes", [])
+        aliases = self.alias_config.get("aliases", {})
+        mailboxes = self.mailbox_config.get("mailboxes", [])
         mailbox_alias_map = {
             str(item.get("alias", "")).strip(): item
             for item in mailboxes
@@ -1608,30 +1619,21 @@ class SettingsPage(ctk.CTkScrollableFrame):
                 return
 
             current_rules = list(load_subject_attachment_rules().get("rules", []))
-            while len(current_rules) < index - 1:
+            while len(current_rules) < index:
                 current_rules.append({})
 
             if is_empty:
-                if index <= len(current_rules):
-                    current_rules.pop(index - 1)
+                current_rules[index - 1] = {}
             else:
-                if len(current_rules) >= index:
-                    current_rules[index - 1] = rule_payload
-                else:
-                    current_rules.append(rule_payload)
+                current_rules[index - 1] = rule_payload
 
             save_subject_attachment_rules(current_rules)
             self.subject_rules_payload = load_subject_attachment_rules()
             self.refresh_rule_summaries_from_saved_payload()
 
             saved_rules = self.subject_rules_payload.get("rules", [])
-            aliases, _ = self.collect_aliases_from_inputs(strict=False)
-            if not aliases:
-                aliases = self.alias_config.get("aliases", {})
             default_webhook_alias = self.alias_config.get("email_alias", "")
-            mailboxes, _ = self.collect_mailboxes_from_inputs(strict=False)
-            if not mailboxes:
-                mailboxes = self.mailbox_config.get("mailboxes", [])
+            mailboxes = self.mailbox_config.get("mailboxes", [])
             mailbox_alias_map = {
                 str(item.get("alias", "")).strip(): item
                 for item in mailboxes
@@ -1777,19 +1779,21 @@ class SettingsPage(ctk.CTkScrollableFrame):
                 window_height = int(self.entries["ui_window_height"].get().strip())
                 sidebar_width = int(self.entries["ui_sidebar_width"].get().strip())
                 log_poll_ms = int(self.entries["ui_log_poll_ms"].get().strip())
+                script_timeout_seconds = int(self.entries["ui_script_timeout_seconds"].get().strip())
                 ui_scale = float(self.entries["ui_scale"].get().strip())
                 if (
                     window_width <= 0
                     or window_height <= 0
                     or sidebar_width <= 0
                     or log_poll_ms <= 0
+                    or script_timeout_seconds <= 0
                     or ui_scale <= 0
                 ):
                     raise ValueError
             except ValueError:
                 messagebox.showerror(
                     "验证失败",
-                    "窗口宽高/侧栏宽度/日志刷新必须是大于0的整数，界面缩放必须是大于0的数字",
+                    "窗口宽高/侧栏宽度/日志刷新/处理程序超时必须是大于0的整数，界面缩放必须是大于0的数字",
                 )
                 return
 
@@ -1812,6 +1816,7 @@ class SettingsPage(ctk.CTkScrollableFrame):
                     "UI_LOG_POLL_MS": str(log_poll_ms),
                     "AUTO_SCROLL_LOG": "true" if auto_scroll else "false",
                     "UI_SCALE": str(ui_scale),
+                    "SCRIPT_TIMEOUT_SECONDS": str(script_timeout_seconds),
                 },
             )
             self._notify_config_changed()

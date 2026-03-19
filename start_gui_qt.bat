@@ -1,11 +1,10 @@
 @echo off
 cd /d "%~dp0"
 echo ============================================
-echo Quantum Bot - Qt Desktop App v5.1
+echo QuantumBot PySide6 v5.1
 echo ============================================
 echo.
 
-REM Check Python environment
 python --version >nul 2>&1
 if errorlevel 1 (
     echo [ERROR] Python not found, please install Python first
@@ -13,22 +12,13 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo [1/3] Checking dependencies...
 pip show PySide6 >nul 2>&1
 if errorlevel 1 (
     echo [INFO] PySide6 not installed, installing...
-    pip install -r requirements_gui.txt
+    pip install -r requirements_gui_qt.txt
 )
 
-pip show watchdog >nul 2>&1
-if errorlevel 1 (
-    echo [INFO] Watchdog not installed, installing...
-    pip install watchdog
-)
-
-echo [2/3] Starting Qt desktop application v5.1...
-echo.
-
+echo [INFO] Starting PySide6 app...
 python gui_qt_app.py
 
 if errorlevel 1 (

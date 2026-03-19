@@ -17,6 +17,8 @@ from .webhook_alias_store import load_webhook_aliases, resolve_webhook_url
 
 
 class FolderMonitorPage(ctk.CTkFrame):
+    OBSERVER_JOIN_TIMEOUT_SECONDS = 5
+
     def __init__(self, master, log_handler: LogHandler, auto_scroll_log: bool = True, **kwargs):
         super().__init__(master, **kwargs)
         self.log_handler = log_handler
@@ -428,7 +430,12 @@ class FolderMonitorPage(ctk.CTkFrame):
         observer = runtime.get("observer")
         if observer:
             observer.stop()
-            observer.join(timeout=5)
+            observer.join(timeout=self.OBSERVER_JOIN_TIMEOUT_SECONDS)
+            if observer.is_alive():
+                self.log_handler.warning(
+                    f"监测线程仍在退出中（>{self.OBSERVER_JOIN_TIMEOUT_SECONDS}秒），请稍候",
+                    source=key,
+                )
         executor = runtime.get("executor")
         if executor:
             executor.shutdown(wait=False, cancel_futures=True)
@@ -560,7 +567,12 @@ class FolderMonitorPage(ctk.CTkFrame):
         observer = runtime.get("observer")
         if observer:
             observer.stop()
-            observer.join(timeout=5)
+            observer.join(timeout=self.OBSERVER_JOIN_TIMEOUT_SECONDS)
+            if observer.is_alive():
+                self.log_handler.warning(
+                    f"旧监测线程未在 {self.OBSERVER_JOIN_TIMEOUT_SECONDS} 秒内退出，继续尝试切换配置",
+                    source=key,
+                )
         executor = runtime.get("executor")
         if executor:
             executor.shutdown(wait=False, cancel_futures=True)
