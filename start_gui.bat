@@ -1,7 +1,7 @@
 @echo off
 cd /d "%~dp0"
 echo ============================================
-echo Quantum Bot - Qt Desktop App v5.1
+echo Quantum Bot - Tk Desktop App v5.2
 echo ============================================
 echo.
 
@@ -14,9 +14,9 @@ if errorlevel 1 (
 )
 
 echo [1/3] Checking dependencies...
-pip show PySide6 >nul 2>&1
+pip show customtkinter >nul 2>&1
 if errorlevel 1 (
-    echo [INFO] PySide6 not installed, installing...
+    echo [INFO] GUI dependencies not installed, installing...
     pip install -r requirements_gui.txt
 )
 
@@ -26,10 +26,16 @@ if errorlevel 1 (
     pip install watchdog
 )
 
-echo [2/3] Starting Qt desktop application v5.1...
+pip show pystray >nul 2>&1
+if errorlevel 1 (
+    echo [INFO] pystray not installed, installing...
+    pip install pystray
+)
+
+echo [2/3] Starting Tk desktop application v5.2...
 echo.
 
-python gui_qt_app.py
+python gui_app.py
 
 if errorlevel 1 (
     echo.

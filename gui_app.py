@@ -5,6 +5,7 @@
 from pathlib import Path
 import os
 import sys
+import threading
 import tkinter as tk
 
 import customtkinter as ctk
@@ -12,13 +13,17 @@ try:
     from PIL import Image
 except Exception:  # pragma: no cover - runtime fallback for missing pillow
     Image = None
+try:
+    import pystray
+except Exception:  # pragma: no cover - runtime fallback for missing pystray
+    pystray = None
 
 from desktop_pages import AboutPage, BotTestPage, ExecutePage, FolderMonitorPage, LogHandler, SettingsPage
 from mail_forwarder.config import load_config, upsert_env_file
 
-APP_TITLE = "量子推送机器人 v5.1"
-APP_FOOTER_TEXT = "v5.1\nby 不丢西瓜der"
-WINDOWS_APP_ID = "QuantumTelecom.LZRobot.5.1"
+APP_TITLE = "量子推送机器人 v5.2"
+APP_FOOTER_TEXT = "v5.2\nby 不丢西瓜der"
+WINDOWS_APP_ID = "QuantumTelecom.LZRobot.5.2"
 
 
 def runtime_base_dir() -> Path:
@@ -64,6 +69,10 @@ class ModernApp(ctk.CTk):
         self._last_normal_size = (self.config.window_width, self.config.window_height)
         self._window_icon_ref = None
         self._size_tracking_enabled = False
+        self._tray_icon = None
+        self._tray_thread = None
+        self._tray_notice_shown = False
+        self._force_exit = False
 
         # Use a CJK-friendly default UI font on Windows for better Chinese rendering.
         try:
@@ -89,6 +98,7 @@ class ModernApp(ctk.CTk):
 
         self.create_ui()
         self._apply_window_icon()
+        self._setup_tray_icon()
         self.bind("<Configure>", self._on_configure)
         self.after(0, self._finalize_initial_geometry)
         self.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -147,6 +157,66 @@ class ModernApp(ctk.CTk):
             size = self._read_current_geometry_size()
             if size:
                 self._last_normal_size = size
+        except Exception:
+            pass
+
+    def _load_tray_image(self):
+        if Image is None:
+            return None
+        icon_path = resource_path("icon/logo_quantum_telecom.png")
+        if not icon_path.exists():
+            return None
+        try:
+            return Image.open(icon_path).convert("RGBA")
+        except Exception:
+            return None
+
+    def _setup_tray_icon(self):
+        if pystray is None:
+            return
+        tray_image = self._load_tray_image()
+        if tray_image is None:
+            return
+        try:
+            menu = pystray.Menu(
+                pystray.MenuItem("Show Window", lambda icon, item: self.after(0, self.restore_from_tray), default=True),
+                pystray.MenuItem("Exit", lambda icon, item: self.after(0, self.quit_from_tray)),
+            )
+            self._tray_icon = pystray.Icon("QuantumBotTray", tray_image, APP_TITLE, menu)
+            self._tray_thread = threading.Thread(target=self._tray_icon.run, daemon=True)
+            self._tray_thread.start()
+        except Exception:
+            self._tray_icon = None
+            self._tray_thread = None
+
+    def restore_from_tray(self):
+        try:
+            self.deiconify()
+            self.lift()
+            self.focus_force()
+        except Exception:
+            pass
+
+    def _show_tray_notice_once(self):
+        if self._tray_notice_shown or self._tray_icon is None:
+            return
+        try:
+            self._tray_icon.notify("QuantumBot is still running in the system tray.", APP_TITLE)
+            self._tray_notice_shown = True
+        except Exception:
+            pass
+
+    def quit_from_tray(self):
+        self._force_exit = True
+        self.on_close()
+
+    def _shutdown_tray_icon(self):
+        tray_icon = self._tray_icon
+        self._tray_icon = None
+        if tray_icon is None:
+            return
+        try:
+            tray_icon.stop()
         except Exception:
             pass
 
@@ -289,6 +359,15 @@ class ModernApp(ctk.CTk):
         self.after(self.config.ui_log_poll_ms, self.process_logs)
 
     def on_close(self):
+        if not self._force_exit and self._tray_icon is not None:
+            self._save_window_geometry()
+            try:
+                self.withdraw()
+            except Exception:
+                self.iconify()
+            self._show_tray_notice_once()
+            return
+
         self._save_window_geometry()
 
         execute_page = self.pages.get("execute")
@@ -299,6 +378,7 @@ class ModernApp(ctk.CTk):
         if folder_page and getattr(folder_page, "is_running", False):
             folder_page.stop_monitor()
 
+        self._shutdown_tray_icon()
         self.destroy()
 
 

@@ -1,11 +1,10 @@
-# 量子推送机器人 v5.1
+# 量子推送机器人 v5.2
 
-桌面程序当前包含两套桌面入口：
+当前仓库只保留 `CustomTkinter` 桌面版入口：
 
-- `gui_app.py`：现有稳定版（CustomTkinter）
-- `gui_qt_app.py`：新界面并行版（PySide6）
+- `gui_app.py`：Tk 桌面主程序
 
-两套入口共用同一套业务核心与 `settings/*.json` 配置文件，支持长期运行的两类检测任务：
+程序基于 `settings/*.json` 配置文件运行，支持长期运行的两类检测任务：
 
 - 邮件检测：按“邮箱检测规则”从指定 IMAP 邮箱拉取最新邮件，筛选附件后直接推送，或交给脚本/EXE 处理后再推送。
 - 文件夹检测：监控本地目录中新文件或变化文件，并推送到指定机器人。
@@ -30,7 +29,6 @@
 - `scripts/`：规则处理脚本目录，含脚本模板与推送辅助文件
 - `settings/`：全部业务配置（持久化）
 - `state/`：运行状态（去重与处理进度）
-- `quick_check.py`：快速自检脚本
 - `QuantumBot.spec`：Windows 打包配置
 - `build_release.ps1`：正式打包脚本
 
@@ -75,18 +73,6 @@ Windows 也可使用：
 start_gui.bat
 ```
 
-PySide6 桌面版可使用：
-
-```bat
-start_gui_qt.bat
-```
-
-也可直接运行：
-
-```bash
-python gui_qt_app.py
-```
-
 ## 使用流程
 
 1. 先在“机器人别名”中维护 webhook 地址。
@@ -102,21 +88,6 @@ python gui_qt_app.py
 - 单条规则保存后不会影响其他槽位，空规则槽位会保留。
 - 脚本执行默认超时 `300` 秒，可在“界面设置”中调整“处理程序超时(s)”。
 - 脚本超时、邮箱登录失败、文件夹无效、Webhook 发送失败等情况会在日志中给出更明确的排查建议。
-
-## 快速自检
-
-```bash
-python quick_check.py
-```
-
-当前自检会检查：
-
-- 核心入口文件是否存在
-- 邮件规则槽位、启用状态、触发方式
-- 文件夹检测配置
-- 运行状态文件是否可读取
-- 打包资源引用
-- 处理程序超时配置
 
 ## 打包（Windows EXE）
 
@@ -144,24 +115,6 @@ pip install pyinstaller
   - `script_push_helper.py`
 - 如需独立分发脚本处理程序，可单独将业务脚本打包为 EXE 后放入 `scripts/`
 
-## 打包（Windows EXE，PySide6 版）
-
-如需单独验证 Qt 版打包，可使用：
-
-```powershell
-py -3.11 -m venv .venv-pack
-.venv-pack\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-pip install -r requirements.txt -r requirements_gui_qt.txt
-pip install pyinstaller
-.\build_release_qt.ps1
-```
-
-产物：
-
-- `dist/QuantumBotQt/QuantumBotQt.exe`
-- `dist/QuantumBotQt/scripts/`
-
 ## Git 上传建议
 
 默认不提交本机敏感配置与运行状态：
@@ -175,27 +128,3 @@ pip install pyinstaller
 ```bash
 git status
 ```
-
-## PySide6 迁移状态
-
-当前仓库已新增一套不影响现有 Tk 版的 PySide6 并行版本：
-
-- `gui_qt_app.py`
-- `qt_pages/`
-- `qt_components/`
-- `app_services/`
-- `requirements_gui_qt.txt`
-- `QuantumBotQt.spec`
-- `build_release_qt.ps1`
-- `PYSIDE6_MIGRATION_PLAN.md`
-
-说明：
-
-- 当前 Qt 版已可独立运行，已具备：
-  - 邮件检测页：规则卡片、独立启动/停止/测试、独立日志、日志导出/清空
-  - 文件夹检测页：独立启动/停止、独立日志、日志导出/清空
-  - 机器人测试页：文字/文件测试、日志导出/清空
-  - 设置页：机器人别名、邮箱配置、邮箱检测规则、文件夹检测、路径设置、界面设置
-  - 设置保存后可通知其他页面刷新配置
-- Qt 入口已支持读取窗口尺寸、启动页、侧栏宽度、页脚文案等现有配置
-- 现有正式版本仍以 `gui_app.py` 为主

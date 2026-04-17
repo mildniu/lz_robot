@@ -6,15 +6,14 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 project_dir = Path(SPECPATH).resolve()
 
-# Collect CustomTkinter assets/themes and watchdog internals.
 datas = []
 datas += collect_data_files("customtkinter")
 
 hiddenimports = []
 hiddenimports += collect_submodules("customtkinter")
 hiddenimports += collect_submodules("watchdog")
+hiddenimports += collect_submodules("pystray")
 
-# Only bundle runtime-required static assets to keep the package lean.
 for name in [
     "logo_quantum_telecom.png",
     "ico_quantum_telecom.ico",
@@ -33,6 +32,7 @@ a = Analysis(
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
+        "tkinter.test",
         "matplotlib",
         "numpy",
         "pandas",
@@ -58,7 +58,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=False,  # GUI app
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     icon=(

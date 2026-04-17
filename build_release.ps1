@@ -26,7 +26,7 @@ if (-not $pythonExe) {
     throw "No usable Python interpreter was found."
 }
 
-Write-Host "[1/3] Building desktop app with PyInstaller..." -ForegroundColor Cyan
+Write-Host "[1/3] Building Tk desktop app with PyInstaller..." -ForegroundColor Cyan
 & $pythonExe -m PyInstaller --noconfirm --clean QuantumBot.spec
 if ($LASTEXITCODE -ne 0) {
     throw "PyInstaller build failed with exit code: $LASTEXITCODE"
